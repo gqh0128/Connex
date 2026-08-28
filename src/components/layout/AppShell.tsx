@@ -1,7 +1,8 @@
-import { Settings2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDefaultLayout, usePanelRef, type PanelSize } from "react-resizable-panels";
 
+import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -13,6 +14,7 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ConnectionSidebar,
   type ConnectionSidebarHandle,
@@ -54,7 +56,7 @@ export function AppShell({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const shellLayout = useDefaultLayout({
-    id: "connex-shell-layout",
+    id: "connex-shell-layout-v2",
     panelIds: ["connections", "workspace"],
     storage: window.localStorage,
   });
@@ -64,7 +66,7 @@ export function AppShell({
     storage: window.localStorage,
   });
   const handleSidebarResize = (size: PanelSize) => {
-    const isCollapsed = size.inPixels <= 64;
+    const isCollapsed = size.inPixels <= 1;
     setIsSidebarCollapsed((wasCollapsed) =>
       wasCollapsed === isCollapsed ? wasCollapsed : isCollapsed,
     );
@@ -143,7 +145,7 @@ export function AppShell({
           defaultSize={248}
           minSize={224}
           maxSize={320}
-          collapsedSize={56}
+          collapsedSize={0}
           collapsible
           groupResizeBehavior="preserve-pixel-size"
           onResize={handleSidebarResize}
@@ -151,9 +153,6 @@ export function AppShell({
           <ConnectionSidebar
             ref={connectionSidebarRef}
             isCollapsed={isSidebarCollapsed}
-            onCollapseToggle={handleSidebarToggle}
-            activeView={activeView}
-            onViewChange={onViewChange}
             onConnect={(connection, credentials) => {
               sshSessions.openSession(connection, credentials);
               onViewChange("workspace");
@@ -163,6 +162,11 @@ export function AppShell({
         <ResizableHandle />
         <ResizablePanel id="workspace" minSize={560}>
           <main className="relative h-full min-w-0 bg-workspace">
+            <SidebarCollapseButton
+              isCollapsed={isSidebarCollapsed}
+              onToggle={handleSidebarToggle}
+            />
+
             <div
               aria-hidden={activeView !== "workspace"}
               className={cn(
@@ -267,5 +271,33 @@ export function AppShell({
         onDecision={sshSessions.decideHostKey}
       />
     </div>
+  );
+}
+
+type SidebarCollapseButtonProps = {
+  isCollapsed: boolean;
+  onToggle: () => void;
+};
+
+function SidebarCollapseButton({ isCollapsed, onToggle }: SidebarCollapseButtonProps) {
+  const label = isCollapsed ? "展开连接侧栏" : "收起连接侧栏";
+  const Icon = isCollapsed ? ChevronRight : ChevronLeft;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          aria-label={label}
+          className="absolute top-1/2 left-1 z-10 -translate-y-1/2"
+          onClick={onToggle}
+        >
+          <Icon data-icon="inline-start" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
   );
 }
