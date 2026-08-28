@@ -67,6 +67,76 @@ impl ConnectionService {
     ) -> Result<ConnectionProfile, ConnectionServiceError> {
         let current = self.repository.get(id.clone()).await?;
         let mutation = credential_mutation(&current, &draft, credential)?;
+        self.update_with_mutation(id, draft, current, mutation)
+            .await
+    }
+
+    pub async fn credential_for_backup(
+        &self,
+        profile: &ConnectionProfile,
+    ) -> Result<Option<SecretString>, ConnectionServiceError> {
+        if !profile.has_stored_credential {
+            return Ok(None);
+        }
+
+        self.credentials.get(&profile.id).await.map_err(Into::into)
+    }
+
+    pub async fn import_profile(
+        &self,
+        id: String,
+        draft: ConnectionDraft,
+        credential: Option<SecretString>,
+        overwrite: bool,
+    ) -> Result<ConnectionProfile, ConnectionServiceError> {
+        if self.repository.contains(id.clone()).await? {
+            if !overwrite {
+                return Err(ConnectionServiceError::Conflict);
+            }
+
+            let current = self.repository.get(id.clone()).await?;
+            let mutation = credential_mutation_for_import(&current, &draft, credential);
+            return self
+                .update_with_mutation(id, draft, current, mutation)
+                .await;
+        }
+
+        self.create_with_id(id, draft, credential).await
+    }
+
+    async fn create_with_id(
+        &self,
+        id: String,
+        draft: ConnectionDraft,
+        credential: Option<SecretString>,
+    ) -> Result<ConnectionProfile, ConnectionServiceError> {
+        let has_stored_credential = credential.is_some();
+        if let Some(credential) = credential {
+            self.credentials.set(&id, credential).await?;
+        }
+
+        match self
+            .repository
+            .create(id.clone(), draft, has_stored_credential)
+            .await
+        {
+            Ok(profile) => Ok(profile),
+            Err(error) => {
+                if has_stored_credential {
+                    self.credentials.delete(&id).await?;
+                }
+                Err(error.into())
+            }
+        }
+    }
+
+    async fn update_with_mutation(
+        &self,
+        id: String,
+        draft: ConnectionDraft,
+        current: ConnectionProfile,
+        mutation: CredentialMutation,
+    ) -> Result<ConnectionProfile, ConnectionServiceError> {
         let has_stored_credential = match &mutation {
             CredentialMutation::Keep => current.has_stored_credential,
             CredentialMutation::Set(_) => true,
@@ -207,6 +277,22 @@ fn credential_mutation(
     }
 }
 
+fn credential_mutation_for_import(
+    current: &ConnectionProfile,
+    draft: &ConnectionDraft,
+    credential: Option<SecretString>,
+) -> CredentialMutation {
+    if let Some(credential) = credential {
+        return CredentialMutation::Set(credential);
+    }
+
+    if current.authentication_method == draft.authentication_method {
+        CredentialMutation::Keep
+    } else {
+        CredentialMutation::Delete
+    }
+}
+
 #[derive(Debug)]
 pub enum ConnectionServiceError {
     InvalidInput {
@@ -214,6 +300,7 @@ pub enum ConnectionServiceError {
         message: &'static str,
     },
     NotFound,
+    Conflict,
     Storage,
     Credentials,
 }
@@ -238,6 +325,7 @@ impl std::fmt::Display for ConnectionServiceError {
         match self {
             Self::InvalidInput { .. } => formatter.write_str("invalid connection profile"),
             Self::NotFound => formatter.write_str("connection profile not found"),
+            Self::Conflict => formatter.write_str("connection profile already exists"),
             Self::Storage => formatter.write_str("connection storage is unavailable"),
             Self::Credentials => formatter.write_str("system credential store is unavailable"),
         }

@@ -55,6 +55,19 @@ impl ConnectionRepository {
         ConnectionProfile::try_from(record)
     }
 
+    pub async fn contains(&self, id: String) -> Result<bool, ConnectionRepositoryError> {
+        self.connection
+            .call(move |database| -> tokio_rusqlite::rusqlite::Result<bool> {
+                database.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM connection_profiles WHERE id = ?1)",
+                    [id],
+                    |row| row.get(0),
+                )
+            })
+            .await
+            .map_err(|_| ConnectionRepositoryError::Storage)
+    }
+
     pub async fn create(
         &self,
         id: String,

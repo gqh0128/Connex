@@ -13,6 +13,7 @@ use infrastructure::database::Database;
 use infrastructure::known_hosts::KnownHostRepository;
 use infrastructure::ssh::SshConnector;
 use managers::sessions::SshSessionManager;
+use services::backups::ConnectionBackupService;
 use services::connections::ConnectionService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -33,8 +34,10 @@ pub fn run() {
             let session_manager = SshSessionManager::new(SshConnector::new(
                 KnownHostRepository::new(database.clone()),
             ));
+            let backup_service = ConnectionBackupService::new(connection_service.clone());
             app.manage(database);
             app.manage(connection_service);
+            app.manage(backup_service);
             app.manage(session_manager);
 
             Ok(())
@@ -49,6 +52,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app::get_app_info,
+            commands::backups::export_connection_backup,
+            commands::backups::inspect_connection_backup,
+            commands::backups::import_connection_backup,
             commands::connections::list_connections,
             commands::connections::create_connection,
             commands::connections::update_connection,
