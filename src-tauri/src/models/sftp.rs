@@ -1,6 +1,19 @@
-use serde::Serialize;
+use std::path::PathBuf;
 
-use crate::domain::sftp::{RemoteDirectory, RemoteFileEntry, RemoteFileKind};
+use serde::{Deserialize, Serialize};
+
+use crate::domain::sftp::{
+    RemoteDirectory, RemoteFileEntry, RemoteFileKind, RemoteUploadProgress, RemoteUploadResult,
+};
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadRemoteFileInput {
+    pub transfer_id: String,
+    pub session_id: String,
+    pub local_path: PathBuf,
+    pub remote_directory: String,
+}
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +69,42 @@ impl From<RemoteDirectory> for RemoteDirectoryDto {
         Self {
             path: directory.path,
             entries: directory.entries.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteUploadProgressDto {
+    pub transfer_id: String,
+    pub transferred_bytes: u64,
+    pub total_bytes: u64,
+    pub bytes_per_second: u64,
+}
+
+impl From<RemoteUploadProgress> for RemoteUploadProgressDto {
+    fn from(progress: RemoteUploadProgress) -> Self {
+        Self {
+            transfer_id: progress.transfer_id,
+            transferred_bytes: progress.transferred_bytes,
+            total_bytes: progress.total_bytes,
+            bytes_per_second: progress.bytes_per_second,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteUploadResultDto {
+    pub remote_path: String,
+    pub total_bytes: u64,
+}
+
+impl From<RemoteUploadResult> for RemoteUploadResultDto {
+    fn from(result: RemoteUploadResult) -> Self {
+        Self {
+            remote_path: result.remote_path,
+            total_bytes: result.total_bytes,
         }
     }
 }

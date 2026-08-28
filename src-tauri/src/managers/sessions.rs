@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::{RwLock, mpsc, watch};
+use tokio::sync::{Mutex, RwLock, mpsc, watch};
 use uuid::Uuid;
 
 use crate::domain::connections::ConnectionProfile;
@@ -10,7 +10,7 @@ use crate::domain::sessions::{
     HostKeyDecision, SessionControl, SessionEvent, SessionSnapshot, SessionState,
     SessionValidationError, StartSessionRequest, TerminalSize,
 };
-use crate::domain::sftp::RemoteDirectory;
+use crate::domain::sftp::{RemoteDirectory, RemoteUploadProgress, RemoteUploadResult};
 use crate::infrastructure::sftp::{
     RemoteFileError, RemoteFileSessionState, SharedRemoteFileSession,
 };
@@ -26,6 +26,7 @@ const MAX_INPUT_BYTES: usize = 64 * 1024;
 pub struct SshSessionManager {
     connector: SshConnector,
     sessions: Arc<RwLock<HashMap<String, SessionEntry>>>,
+    uploads: Arc<Mutex<HashMap<String, UploadControl>>>,
 }
 
 impl SshSessionManager {
@@ -33,6 +34,7 @@ impl SshSessionManager {
         Self {
             connector,
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            uploads: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -75,7 +77,7 @@ impl SshSessionManager {
         }
 
         let connector = self.connector.clone();
-        let sessions = self.sessions.clone();
+        let manager = self.clone();
         tauri::async_runtime::spawn(async move {
             let result = connector
                 .run(
@@ -93,7 +95,8 @@ impl SshSessionManager {
 
             let final_snapshot = finish_session(&snapshot, result).await;
             let _ = events.send(SessionEvent::Snapshot(final_snapshot)).await;
-            sessions.write().await.remove(&session_id);
+            manager.cancel_uploads_for_session(&session_id).await;
+            manager.sessions.write().await.remove(&session_id);
         });
 
         Ok(initial_snapshot)
@@ -154,22 +157,76 @@ impl SshSessionManager {
         session_id: &str,
         path: Option<&str>,
     ) -> Result<RemoteDirectory, SessionManagerError> {
-        let entry = self.entry(session_id).await?;
-        if entry.snapshot.read().await.state != SessionState::Connected {
-            return Err(SessionManagerError::InvalidState);
-        }
-
-        let remote_files = match entry.remote_files.read().await.clone() {
-            RemoteFileSessionState::Ready(remote_files) => remote_files,
-            RemoteFileSessionState::Connecting | RemoteFileSessionState::Unavailable => {
-                return Err(SessionManagerError::RemoteFilesUnavailable);
-            }
-        };
-
-        remote_files
+        self.remote_file_session(session_id)
+            .await?
             .list_directory(path)
             .await
             .map_err(SessionManagerError::from)
+    }
+
+    pub async fn upload_remote_file(
+        &self,
+        transfer_id: String,
+        session_id: &str,
+        local_path: &std::path::Path,
+        remote_directory: &str,
+        progress: mpsc::Sender<RemoteUploadProgress>,
+    ) -> Result<RemoteUploadResult, SessionManagerError> {
+        if Uuid::parse_str(&transfer_id).is_err() {
+            return Err(SessionManagerError::InvalidInput {
+                field: "transferId",
+                message: "传输任务标识无效。",
+            });
+        }
+
+        let remote_files = self.remote_file_session(session_id).await?;
+        let (cancellation_sender, cancellation_receiver) = watch::channel(false);
+        {
+            let mut uploads = self.uploads.lock().await;
+            if uploads.contains_key(&transfer_id) {
+                return Err(SessionManagerError::InvalidInput {
+                    field: "transferId",
+                    message: "这个传输任务已经存在。",
+                });
+            }
+            uploads.insert(
+                transfer_id.clone(),
+                UploadControl {
+                    session_id: session_id.to_owned(),
+                    cancellation: cancellation_sender,
+                },
+            );
+        }
+
+        let result = remote_files
+            .upload_file(
+                &transfer_id,
+                local_path,
+                remote_directory,
+                cancellation_receiver,
+                progress,
+            )
+            .await
+            .map_err(SessionManagerError::from);
+        self.uploads.lock().await.remove(&transfer_id);
+        result
+    }
+
+    pub async fn cancel_remote_file_upload(
+        &self,
+        transfer_id: &str,
+    ) -> Result<(), SessionManagerError> {
+        if Uuid::parse_str(transfer_id).is_err() {
+            return Err(SessionManagerError::InvalidInput {
+                field: "transferId",
+                message: "传输任务标识无效。",
+            });
+        }
+
+        if let Some(upload) = self.uploads.lock().await.get(transfer_id) {
+            let _send_result = upload.cancellation.send(true);
+        }
+        Ok(())
     }
 
     pub async fn close(&self, session_id: &str) -> Result<(), SessionManagerError> {
@@ -191,6 +248,7 @@ impl SshSessionManager {
         let _ = entry.host_key_decisions.try_send(HostKeyDecision::Reject);
         let _ = entry.controls.try_send(SessionControl::Close);
         let _ = entry.cancellation.send(true);
+        self.cancel_uploads_for_session(session_id).await;
         Ok(())
     }
 
@@ -223,6 +281,32 @@ impl SshSessionManager {
             .map_err(|_| SessionManagerError::Unavailable)
     }
 
+    async fn remote_file_session(
+        &self,
+        session_id: &str,
+    ) -> Result<crate::infrastructure::sftp::RemoteFileSession, SessionManagerError> {
+        let entry = self.entry(session_id).await?;
+        if entry.snapshot.read().await.state != SessionState::Connected {
+            return Err(SessionManagerError::InvalidState);
+        }
+
+        match entry.remote_files.read().await.clone() {
+            RemoteFileSessionState::Ready(remote_files) => Ok(remote_files),
+            RemoteFileSessionState::Connecting | RemoteFileSessionState::Unavailable => {
+                Err(SessionManagerError::RemoteFilesUnavailable)
+            }
+        }
+    }
+
+    async fn cancel_uploads_for_session(&self, session_id: &str) {
+        let uploads = self.uploads.lock().await;
+        for upload in uploads.values() {
+            if upload.session_id == session_id {
+                let _send_result = upload.cancellation.send(true);
+            }
+        }
+    }
+
     async fn entry(&self, session_id: &str) -> Result<SessionEntry, SessionManagerError> {
         self.sessions
             .read()
@@ -241,6 +325,11 @@ struct SessionEntry {
     host_key_decisions: mpsc::Sender<HostKeyDecision>,
     cancellation: watch::Sender<bool>,
     events: mpsc::Sender<SessionEvent>,
+}
+
+struct UploadControl {
+    session_id: String,
+    cancellation: watch::Sender<bool>,
 }
 
 async fn finish_session(
@@ -285,8 +374,12 @@ pub enum SessionManagerError {
     InvalidState,
     Unavailable,
     InvalidRemotePath,
+    InvalidLocalFile,
     RemoteFilesUnavailable,
     RemoteDirectoryUnavailable,
+    RemoteFileExists,
+    TransferCancelled,
+    RemoteUploadFailed,
 }
 
 impl From<SessionValidationError> for SessionManagerError {
@@ -302,8 +395,12 @@ impl From<RemoteFileError> for SessionManagerError {
     fn from(error: RemoteFileError) -> Self {
         match error {
             RemoteFileError::InvalidPath => Self::InvalidRemotePath,
+            RemoteFileError::InvalidLocalFile => Self::InvalidLocalFile,
             RemoteFileError::Unavailable => Self::RemoteFilesUnavailable,
             RemoteFileError::DirectoryUnavailable => Self::RemoteDirectoryUnavailable,
+            RemoteFileError::RemoteFileExists => Self::RemoteFileExists,
+            RemoteFileError::TransferCancelled => Self::TransferCancelled,
+            RemoteFileError::UploadFailed => Self::RemoteUploadFailed,
         }
     }
 }
@@ -316,10 +413,14 @@ impl std::fmt::Display for SessionManagerError {
             Self::InvalidState => formatter.write_str("SSH session is not ready for this action"),
             Self::Unavailable => formatter.write_str("SSH session is unavailable"),
             Self::InvalidRemotePath => formatter.write_str("remote path is invalid"),
+            Self::InvalidLocalFile => formatter.write_str("local file is unavailable"),
             Self::RemoteFilesUnavailable => formatter.write_str("SFTP session is unavailable"),
             Self::RemoteDirectoryUnavailable => {
                 formatter.write_str("remote directory is unavailable")
             }
+            Self::RemoteFileExists => formatter.write_str("remote file already exists"),
+            Self::TransferCancelled => formatter.write_str("file transfer was cancelled"),
+            Self::RemoteUploadFailed => formatter.write_str("remote file upload failed"),
         }
     }
 }

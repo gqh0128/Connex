@@ -1,8 +1,14 @@
 use tauri::State;
+use tauri::ipc::Channel;
+use tokio::sync::mpsc;
 
 use crate::managers::sessions::SshSessionManager;
 use crate::models::error::CommandError;
-use crate::models::sftp::RemoteDirectoryDto;
+use crate::models::sftp::{
+    RemoteDirectoryDto, RemoteUploadProgressDto, RemoteUploadResultDto, UploadRemoteFileInput,
+};
+
+const TRANSFER_EVENT_QUEUE_CAPACITY: usize = 32;
 
 #[tauri::command]
 pub async fn list_remote_directory(
@@ -14,5 +20,45 @@ pub async fn list_remote_directory(
         .list_remote_directory(&session_id, path.as_deref())
         .await
         .map(Into::into)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn upload_remote_file(
+    input: UploadRemoteFileInput,
+    on_progress: Channel<RemoteUploadProgressDto>,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<RemoteUploadResultDto, CommandError> {
+    let (progress_sender, mut progress_receiver) =
+        mpsc::channel::<crate::domain::sftp::RemoteUploadProgress>(TRANSFER_EVENT_QUEUE_CAPACITY);
+    tauri::async_runtime::spawn(async move {
+        while let Some(progress) = progress_receiver.recv().await {
+            if on_progress.send(progress.into()).is_err() {
+                break;
+            }
+        }
+    });
+
+    sessions
+        .upload_remote_file(
+            input.transfer_id,
+            &input.session_id,
+            &input.local_path,
+            &input.remote_directory,
+            progress_sender,
+        )
+        .await
+        .map(Into::into)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cancel_remote_file_upload(
+    transfer_id: String,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<(), CommandError> {
+    sessions
+        .cancel_remote_file_upload(&transfer_id)
+        .await
         .map_err(Into::into)
 }

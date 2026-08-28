@@ -72,6 +72,11 @@ impl From<SessionManagerError> for CommandError {
                 message: "远程路径无效，请返回上一级目录后重试。",
                 field: Some("path"),
             },
+            SessionManagerError::InvalidLocalFile => Self {
+                code: "local_file_unavailable",
+                message: "无法读取这个本地文件，请检查文件是否仍然存在以及访问权限。",
+                field: Some("localPath"),
+            },
             SessionManagerError::RemoteFilesUnavailable => Self {
                 code: "sftp_unavailable",
                 message: "服务器没有提供可用的 SFTP 文件服务。",
@@ -81,6 +86,21 @@ impl From<SessionManagerError> for CommandError {
                 code: "remote_directory_unavailable",
                 message: "无法读取这个远程目录，请检查路径和访问权限。",
                 field: Some("path"),
+            },
+            SessionManagerError::RemoteFileExists => Self {
+                code: "remote_file_exists",
+                message: "远程目录中已经存在同名文件，Connex 没有覆盖它。",
+                field: Some("remoteDirectory"),
+            },
+            SessionManagerError::TransferCancelled => Self {
+                code: "transfer_cancelled",
+                message: "文件上传已取消。",
+                field: None,
+            },
+            SessionManagerError::RemoteUploadFailed => Self {
+                code: "remote_upload_failed",
+                message: "文件上传失败，请检查远程目录权限和连接状态。",
+                field: None,
             },
         }
     }
