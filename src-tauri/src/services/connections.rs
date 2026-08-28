@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use uuid::Uuid;
 
 use crate::domain::connections::{ConnectionDraft, ConnectionProfile};
@@ -11,12 +9,15 @@ pub struct ConnectionService {
 }
 
 impl ConnectionService {
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self, ConnectionServiceError> {
-        let repository = ConnectionRepository::open(path)
-            .await
-            .map_err(ConnectionServiceError::from)?;
+    pub fn new(repository: ConnectionRepository) -> Self {
+        Self { repository }
+    }
 
-        Ok(Self { repository })
+    pub async fn get(&self, id: String) -> Result<ConnectionProfile, ConnectionServiceError> {
+        self.repository
+            .get(id)
+            .await
+            .map_err(ConnectionServiceError::from)
     }
 
     pub async fn list(&self) -> Result<Vec<ConnectionProfile>, ConnectionServiceError> {

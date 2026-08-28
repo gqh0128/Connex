@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::managers::sessions::SessionManagerError;
 use crate::services::connections::ConnectionServiceError;
 
 #[derive(Debug, Serialize)]
@@ -26,6 +27,33 @@ impl From<ConnectionServiceError> for CommandError {
             ConnectionServiceError::Storage => Self {
                 code: "connection_storage_unavailable",
                 message: "连接数据暂时无法访问，请稍后重试。",
+                field: None,
+            },
+        }
+    }
+}
+
+impl From<SessionManagerError> for CommandError {
+    fn from(error: SessionManagerError) -> Self {
+        match error {
+            SessionManagerError::InvalidInput { field, message } => Self {
+                code: "invalid_ssh_session",
+                message,
+                field: Some(field),
+            },
+            SessionManagerError::NotFound => Self {
+                code: "ssh_session_not_found",
+                message: "找不到这个 SSH 会话，它可能已经结束。",
+                field: None,
+            },
+            SessionManagerError::InvalidState => Self {
+                code: "invalid_ssh_session_state",
+                message: "SSH 会话当前不能执行这个操作。",
+                field: None,
+            },
+            SessionManagerError::Unavailable => Self {
+                code: "ssh_session_unavailable",
+                message: "SSH 会话暂时不可用，请重新连接。",
                 field: None,
             },
         }

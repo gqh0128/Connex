@@ -83,7 +83,7 @@ IPC 分为控制面和数据面。
 
 ## 6. SSH 会话模型
 
-每次成功连接创建一个不可猜测的 session ID，并启动独立会话任务。建议状态机：
+每次发起连接创建一个 UUID session ID，并启动独立会话任务。当前状态机：
 
 ```text
 idle → connecting → verifyingHost → authenticating → connected
@@ -92,15 +92,20 @@ idle → connecting → verifyingHost → authenticating → connected
                                                           └── disconnected
 ```
 
-会话任务独占 SSH handle，并通过有界队列接收：
+会话任务独占 SSH handle，并通过容量为 64 的有界队列接收：
 
 - `Write(Vec<u8>)`
 - `Resize { columns, rows, pixel_width, pixel_height }`
-- `OpenSftp`
 - `Keepalive`
 - `Close`
 
+`OpenSftp` 会在传输 manager 开始实现时加入同一控制队列，并通过一次性响应通道返回已经初始化的 SFTP session；当前 SSH 基线不提前暴露未被消费的 SFTP handle。
+
 打开 Shell 前先请求远程 PTY，默认终端类型为 `xterm-256color`。初始行列数来自 xterm FitAddon，容器变化后发送 resize。终端输出背压需要在技术验证中用持续大输出测试，不能采用无界内存队列。
+
+SSH transport 固定使用 `russh 0.63.x` 的 `ring + rsa + flate2` 特性，避免引入系统 OpenSSL 和重量更大的默认 `aws-lc` 构建链；SFTP 使用与 SSH channel stream 解耦的 `russh-sftp 2.4.x`。连接阶段设置 15 秒 TCP 超时；主机确认和认证分别最多等待 120 秒。Rust 到 Tauri Channel 之间还有容量为 64 的统一事件队列，终端输出进入队列时自然施加背压。
+
+窗口销毁会触发 manager 的 `close_all`；单个会话关闭同时发送取消信号和 `Close` 控制消息，使连接、主机确认、认证和已连接 Shell 四个阶段都可以停止。终端页面对应的 Tauri Channel 失效后，内部事件接收端关闭并促使会话回收。
 
 重连会创建新的远程 Shell；UI 不把它描述成恢复原进程。应用关闭、标签关闭或 WebView 销毁时，manager 必须取消会话任务并释放通道。
 
@@ -143,7 +148,9 @@ local file ↔ Rust buffered I/O ↔ SFTP channel ↔ remote file
 
 数据库从第一张表开始使用版本化 migration，不在启动代码里散落 `CREATE TABLE`。密码和私钥口令不进入数据库；它们存入系统凭据管理器，SQLite 只保存稳定引用。Linux 没有可用 secret service 时，禁用“记住密码”，不能退化为明文文件。
 
-连接配置持久化使用 Rust 侧 `tokio-rusqlite` 的独立数据库线程，SQLite 以 bundled 模式随应用构建，避免平台系统库版本差异。数据库文件位于 Tauri 应用数据目录，初始 migration 为 `src-tauri/migrations/0001_create_connections.sql`。前端只通过类型化 commands 访问连接配置，不能直接执行 SQL。
+持久化使用 Rust 侧共享的 `Database` 基础设施和 `tokio-rusqlite` 独立数据库线程，SQLite 以 bundled 模式随应用构建，避免平台系统库版本差异。数据库文件位于 Tauri 应用数据目录；连接配置、known host 等仓库共享同一条连接与按 `user_version` 顺序执行的 migration。前端只通过类型化 commands 访问持久化数据，不能直接执行 SQL。
+
+known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主机可以保存多种主机密钥算法；已经记录的算法出现不同指纹时必须拒绝连接，不能由普通的“首次信任”流程覆盖。
 
 ## 10. 技术验证门槛
 

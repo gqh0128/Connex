@@ -1,11 +1,9 @@
 use std::fmt;
-use std::path::Path;
 
 use tokio_rusqlite::{Connection, OptionalExtension, params};
 
 use crate::domain::connections::{AuthenticationMethod, ConnectionDraft, ConnectionProfile};
-
-const MIGRATIONS: &[&str] = &[include_str!("../../migrations/0001_create_connections.sql")];
+use crate::infrastructure::database::Database;
 
 #[derive(Clone)]
 pub struct ConnectionRepository {
@@ -13,36 +11,10 @@ pub struct ConnectionRepository {
 }
 
 impl ConnectionRepository {
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self, ConnectionRepositoryError> {
-        let connection = Connection::open(path)
-            .await
-            .map_err(|_| ConnectionRepositoryError::Storage)?;
-
-        connection
-            .call(|database| -> tokio_rusqlite::rusqlite::Result<()> {
-                database.busy_timeout(std::time::Duration::from_secs(5))?;
-                database.pragma_update(None, "foreign_keys", true)?;
-                database.pragma_update(None, "journal_mode", "WAL")?;
-
-                let current_version: usize =
-                    database.pragma_query_value(None, "user_version", |row| row.get(0))?;
-                if current_version > MIGRATIONS.len() {
-                    return Err(tokio_rusqlite::rusqlite::Error::InvalidQuery);
-                }
-
-                for (index, migration) in MIGRATIONS.iter().enumerate().skip(current_version) {
-                    let transaction = database.transaction()?;
-                    transaction.execute_batch(migration)?;
-                    transaction.pragma_update(None, "user_version", index + 1)?;
-                    transaction.commit()?;
-                }
-
-                Ok(())
-            })
-            .await
-            .map_err(|_| ConnectionRepositoryError::Storage)?;
-
-        Ok(Self { connection })
+    pub fn new(database: Database) -> Self {
+        Self {
+            connection: database.connection(),
+        }
     }
 
     pub async fn list(&self) -> Result<Vec<ConnectionProfile>, ConnectionRepositoryError> {
@@ -70,6 +42,17 @@ impl ConnectionRepository {
             .into_iter()
             .map(ConnectionProfile::try_from)
             .collect()
+    }
+
+    pub async fn get(&self, id: String) -> Result<ConnectionProfile, ConnectionRepositoryError> {
+        let record = self
+            .connection
+            .call(move |database| select_by_id(database, &id))
+            .await
+            .map_err(|_| ConnectionRepositoryError::Storage)?
+            .ok_or(ConnectionRepositoryError::NotFound)?;
+
+        ConnectionProfile::try_from(record)
     }
 
     pub async fn create(
