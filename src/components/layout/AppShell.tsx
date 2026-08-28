@@ -232,7 +232,7 @@ export function AppShell({
 
             {activeView === "settings" ? (
               <div className="absolute inset-0 flex min-w-0 flex-col bg-workspace">
-                <header className="flex h-11 shrink-0 items-stretch border-b bg-surface">
+                <header className="flex h-9 shrink-0 items-stretch border-b bg-surface">
                   <div className="flex shrink-0 items-center px-1">
                     <SidebarToggleButton
                       isCollapsed={isSidebarCollapsed}

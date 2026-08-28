@@ -34,7 +34,7 @@ export function SessionTabs({
   onFilePanelToggle,
 }: SessionTabsProps) {
   return (
-    <header className="flex h-11 shrink-0 items-stretch border-b bg-surface">
+    <header className="flex h-9 shrink-0 items-stretch border-b bg-surface">
       <div className="flex shrink-0 items-center gap-0.5 px-1">
         <SidebarToggleButton
           isCollapsed={isSidebarCollapsed}
@@ -66,7 +66,7 @@ export function SessionTabs({
             <div
               key={tab.localId}
               className={cn(
-                "group relative flex w-48 shrink-0 items-stretch border-r",
+                "group relative flex w-40 shrink-0 items-stretch border-r",
                 isActive ? "bg-workspace" : "bg-surface hover:bg-muted/60",
               )}
             >
@@ -75,7 +75,7 @@ export function SessionTabs({
                 role="tab"
                 aria-selected={isActive}
                 aria-controls={`terminal-${tab.localId}`}
-                className="flex min-w-0 flex-1 items-center gap-2 px-3 pr-9 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onClick={() => onSelect(tab.localId)}
               >
                 <SessionStatusIndicator
@@ -94,7 +94,7 @@ export function SessionTabs({
                     size="icon-sm"
                     aria-label={`关闭 ${tab.profile.name} 标签页`}
                     className={cn(
-                      "absolute top-2 right-1.5",
+                      "absolute top-1 right-1",
                       isActive
                         ? "opacity-100"
                         : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
@@ -115,17 +115,24 @@ export function SessionTabs({
         })}
       </div>
 
-      <div className="flex items-center border-l px-1.5">
-        <Button
-          type="button"
-          variant={isFilePanelOpen ? "secondary" : "ghost"}
-          size="sm"
-          aria-pressed={isFilePanelOpen}
-          onClick={onFilePanelToggle}
-        >
-          <Files data-icon="inline-start" />
-          文件
-        </Button>
+      <div className="flex items-center border-l px-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant={isFilePanelOpen ? "secondary" : "ghost"}
+              size="icon-sm"
+              aria-label={isFilePanelOpen ? "关闭远程文件面板" : "打开远程文件面板"}
+              aria-pressed={isFilePanelOpen}
+              onClick={onFilePanelToggle}
+            >
+              <Files data-icon="inline-start" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {isFilePanelOpen ? "关闭远程文件" : "打开远程文件"}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </header>
   );
