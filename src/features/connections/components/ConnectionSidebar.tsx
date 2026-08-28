@@ -11,6 +11,13 @@ import {
 
 import { Button } from "@/components/ui/button";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -203,62 +210,85 @@ export const ConnectionSidebar = forwardRef<
           </div>
         ) : null}
 
-        <ScrollArea className="min-h-0 flex-1">
-          <nav aria-label="连接列表" className="flex flex-col gap-1 px-2.5 pb-3 pt-1">
-            {isLoading ? (
-              <p className="px-2 py-3 text-xs text-muted-foreground">正在加载连接…</p>
-            ) : loadError ? (
-              <div className="flex items-start gap-1">
-                <div className="min-w-0 flex-1">
-                  <p role="alert" className="px-2 py-3 text-xs text-destructive">
-                    {loadError.message}
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <ScrollArea className="min-h-0 flex-1">
+              <nav
+                aria-label="连接列表"
+                className="flex min-h-full flex-col gap-1 px-2.5 pb-3 pt-1"
+              >
+                {isLoading ? (
+                  <p className="px-2 py-3 text-xs text-muted-foreground">
+                    正在加载连接…
                   </p>
-                </div>
-                <IconAction
-                  label="重新加载连接"
-                  onClick={() => void refreshConnections()}
-                >
-                  <RefreshCw data-icon="inline-start" />
-                </IconAction>
-              </div>
-            ) : visibleConnections.length > 0 ? (
-              <div className="flex flex-col gap-0.5">
-                {visibleConnections.map((connection) => (
-                  <ConnectionListItem
-                    key={connection.id}
-                    connection={connection}
-                    isActive={connection.id === activeConnectionId}
-                    onConnect={() => onConnect(connection)}
-                    onEdit={() => openEditDialog(connection)}
-                    onCopyAddress={() => {
-                      void writeClipboardText(
-                        `${connection.username}@${connection.host}:${connection.port}`,
-                      ).catch(() => undefined);
-                    }}
-                    onDelete={() => {
-                      setDeleteError(null);
-                      setDeletingConnection(connection);
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <Empty size="compact">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <Server />
-                  </EmptyMedia>
-                  <EmptyTitle>{searchQuery ? "没有匹配的连接" : "暂无连接"}</EmptyTitle>
-                  <EmptyDescription>
-                    {searchQuery
-                      ? "尝试搜索名称、主机或用户名"
-                      : "新建连接或导入 SSH 配置"}
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </nav>
-        </ScrollArea>
+                ) : loadError ? (
+                  <div className="flex items-start gap-1">
+                    <div className="min-w-0 flex-1">
+                      <p role="alert" className="px-2 py-3 text-xs text-destructive">
+                        {loadError.message}
+                      </p>
+                    </div>
+                    <IconAction
+                      label="重新加载连接"
+                      onClick={() => void refreshConnections()}
+                    >
+                      <RefreshCw data-icon="inline-start" />
+                    </IconAction>
+                  </div>
+                ) : visibleConnections.length > 0 ? (
+                  <div className="flex flex-col gap-0.5">
+                    {visibleConnections.map((connection) => (
+                      <ConnectionListItem
+                        key={connection.id}
+                        connection={connection}
+                        isActive={connection.id === activeConnectionId}
+                        onConnect={() => onConnect(connection)}
+                        onEdit={() => openEditDialog(connection)}
+                        onCopyAddress={() => {
+                          void writeClipboardText(
+                            `${connection.username}@${connection.host}:${connection.port}`,
+                          ).catch(() => undefined);
+                        }}
+                        onDelete={() => {
+                          setDeleteError(null);
+                          setDeletingConnection(connection);
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Empty size="compact">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <Server />
+                      </EmptyMedia>
+                      <EmptyTitle>
+                        {searchQuery ? "没有匹配的连接" : "暂无连接"}
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        {searchQuery
+                          ? "尝试搜索名称、主机或用户名"
+                          : "新建连接或导入 SSH 配置"}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )}
+              </nav>
+            </ScrollArea>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuGroup>
+              <ContextMenuItem onSelect={openCreateDialog}>
+                <Plus />
+                新建连接…
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => void refreshConnections()}>
+                <RefreshCw />
+                刷新连接列表
+              </ContextMenuItem>
+            </ContextMenuGroup>
+          </ContextMenuContent>
+        </ContextMenu>
       </aside>
 
       <ConnectionFormDialog

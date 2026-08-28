@@ -66,7 +66,9 @@ export function FilePanel({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <aside className={cn("flex min-h-0 flex-col border-l bg-surface", className)}>
+        <aside
+          className={cn("flex h-full min-h-0 flex-col border-l bg-surface", className)}
+        >
           <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
             <div className="flex items-center gap-0.5">
               <PanelButton

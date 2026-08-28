@@ -109,7 +109,10 @@ export function SessionTabs({
   }, [activePageId, activeTabId]);
 
   return (
-    <header className="flex h-8 shrink-0 items-stretch border-b bg-surface">
+    <header
+      className="flex h-8 shrink-0 items-stretch border-b bg-surface"
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <div className="flex shrink-0 items-center gap-0.5 px-1">
         <SidebarToggleButton
           isCollapsed={isSidebarCollapsed}

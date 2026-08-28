@@ -39,6 +39,7 @@ export function ConnectionListItem({
             "group flex min-w-0 items-center rounded-md transition-colors hover:bg-accent focus-within:bg-accent data-[state=open]:bg-accent",
             isActive && "bg-accent text-accent-foreground",
           )}
+          onContextMenu={(event) => event.stopPropagation()}
         >
           <Button
             type="button"

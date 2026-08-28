@@ -31,6 +31,7 @@ export function AppTitleBar({
     <header
       data-tauri-drag-region={isMacPlatform ? true : undefined}
       className="flex h-11 shrink-0 select-none items-center border-b bg-surface text-surface-foreground"
+      onContextMenu={(event) => event.preventDefault()}
     >
       {isMacPlatform ? <div className="w-[76px] shrink-0" aria-hidden="true" /> : null}
 
