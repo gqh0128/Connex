@@ -72,7 +72,10 @@ export function SessionTabs({
       </div>
       <Separator orientation="vertical" />
 
-      <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto" role="tablist">
+      <div
+        className="flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        role="tablist"
+      >
         {tabs.map((tab) => {
           const isActive = tab.localId === activeTabId;
           const presentation = getSessionPresentation(tab);
