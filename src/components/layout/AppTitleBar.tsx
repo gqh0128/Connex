@@ -1,4 +1,4 @@
-import { Settings, SlidersHorizontal, SquareTerminal } from "lucide-react";
+import { Settings } from "lucide-react";
 
 import { ConnexMark } from "@/components/brand/ConnexMark";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ export function AppTitleBar({ activeView, onViewChange }: AppTitleBarProps) {
   const isMacPlatform = isMacOS();
   const isSettingsOpen = activeView === "settings";
   const activeLabel = isSettingsOpen ? "设置" : "欢迎";
-  const ActiveIcon = isSettingsOpen ? SlidersHorizontal : SquareTerminal;
 
   return (
     <header
@@ -35,7 +34,6 @@ export function AppTitleBar({ activeView, onViewChange }: AppTitleBarProps) {
         <ConnexMark size="compact" />
         <span className="text-sm font-semibold tracking-tight">Connex</span>
         <span className="px-1 text-muted-foreground/60">/</span>
-        <ActiveIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="max-w-64 truncate text-xs text-muted-foreground">
           {activeLabel}
         </span>
