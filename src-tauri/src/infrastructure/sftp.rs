@@ -99,6 +99,124 @@ impl RemoteFileSession {
         Ok(RemoteDirectory { path, entries })
     }
 
+    pub async fn create_directory(
+        &self,
+        parent_path: &str,
+        name: &str,
+    ) -> Result<String, RemoteFileError> {
+        validate_remote_file_name(name)?;
+        let parent_path = self
+            .client
+            .canonicalize(parent_path)
+            .await
+            .map_err(|_| RemoteFileError::DirectoryUnavailable)?;
+        let path = join_remote_path(&parent_path, name);
+        if self
+            .client
+            .try_exists(path.clone())
+            .await
+            .map_err(|_| RemoteFileError::CreateFailed)?
+        {
+            return Err(RemoteFileError::EntryExists);
+        }
+
+        self.client
+            .create_dir(path.clone())
+            .await
+            .map_err(|_| RemoteFileError::CreateFailed)?;
+        Ok(path)
+    }
+
+    pub async fn create_file(
+        &self,
+        parent_path: &str,
+        name: &str,
+    ) -> Result<String, RemoteFileError> {
+        validate_remote_file_name(name)?;
+        let parent_path = self
+            .client
+            .canonicalize(parent_path)
+            .await
+            .map_err(|_| RemoteFileError::DirectoryUnavailable)?;
+        let path = join_remote_path(&parent_path, name);
+        if self
+            .client
+            .try_exists(path.clone())
+            .await
+            .map_err(|_| RemoteFileError::CreateFailed)?
+        {
+            return Err(RemoteFileError::EntryExists);
+        }
+
+        let file = self
+            .client
+            .open_with_flags(
+                path.clone(),
+                OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+            )
+            .await
+            .map_err(|_| RemoteFileError::CreateFailed)?;
+        file.close()
+            .await
+            .map_err(|_| RemoteFileError::CreateFailed)?;
+        Ok(path)
+    }
+
+    pub async fn rename_entry(
+        &self,
+        path: &str,
+        new_name: &str,
+    ) -> Result<String, RemoteFileError> {
+        validate_mutable_remote_path(path)?;
+        validate_remote_file_name(new_name)?;
+        let path = path.trim_end_matches('/');
+        let current_name = path
+            .rsplit('/')
+            .next()
+            .ok_or(RemoteFileError::InvalidPath)?;
+        if current_name == new_name {
+            return Ok(path.to_owned());
+        }
+
+        let parent_path = remote_parent_directory(path)?;
+        let next_path = join_remote_path(&parent_path, new_name);
+        if self
+            .client
+            .try_exists(next_path.clone())
+            .await
+            .map_err(|_| RemoteFileError::RenameFailed)?
+        {
+            return Err(RemoteFileError::EntryExists);
+        }
+
+        self.client
+            .rename(path, next_path.clone())
+            .await
+            .map_err(|_| RemoteFileError::RenameFailed)?;
+        Ok(next_path)
+    }
+
+    pub async fn delete_entry(&self, path: &str) -> Result<(), RemoteFileError> {
+        validate_mutable_remote_path(path)?;
+        let metadata = self
+            .client
+            .symlink_metadata(path)
+            .await
+            .map_err(|_| RemoteFileError::DeleteFailed)?;
+
+        if metadata.file_type().is_dir() {
+            self.client
+                .remove_dir(path)
+                .await
+                .map_err(|_| RemoteFileError::DeleteFailed)
+        } else {
+            self.client
+                .remove_file(path)
+                .await
+                .map_err(|_| RemoteFileError::DeleteFailed)
+        }
+    }
+
     pub async fn upload_file(
         &self,
         transfer_id: &str,
@@ -112,7 +230,7 @@ impl RemoteFileSession {
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or(RemoteFileError::InvalidLocalFile)?;
-        validate_remote_file_name(file_name)?;
+        validate_remote_file_name(file_name).map_err(|_| RemoteFileError::InvalidLocalFile)?;
 
         let mut local_file = LocalFile::open(local_path)
             .await
@@ -252,6 +370,14 @@ fn validate_remote_path(path: &str) -> Result<(), RemoteFileError> {
     Ok(())
 }
 
+fn validate_mutable_remote_path(path: &str) -> Result<(), RemoteFileError> {
+    validate_remote_path(path)?;
+    if matches!(path.trim_end_matches('/'), "" | "." | "..") {
+        return Err(RemoteFileError::InvalidPath);
+    }
+    Ok(())
+}
+
 fn validate_remote_file_name(file_name: &str) -> Result<(), RemoteFileError> {
     if file_name.is_empty()
         || file_name == "."
@@ -259,7 +385,7 @@ fn validate_remote_file_name(file_name: &str) -> Result<(), RemoteFileError> {
         || file_name.len() > MAX_REMOTE_FILE_NAME_BYTES
         || file_name.contains(['/', '\0'])
     {
-        return Err(RemoteFileError::InvalidLocalFile);
+        return Err(RemoteFileError::InvalidName);
     }
 
     Ok(())
@@ -270,6 +396,19 @@ fn join_remote_path(directory: &str, file_name: &str) -> String {
         format!("/{file_name}")
     } else {
         format!("{}/{file_name}", directory.trim_end_matches('/'))
+    }
+}
+
+fn remote_parent_directory(path: &str) -> Result<String, RemoteFileError> {
+    let path = path.trim_end_matches('/');
+    let Some(separator_index) = path.rfind('/') else {
+        return Ok(".".to_owned());
+    };
+
+    if separator_index == 0 {
+        Ok("/".to_owned())
+    } else {
+        Ok(path[..separator_index].to_owned())
     }
 }
 
@@ -297,10 +436,15 @@ fn send_upload_progress(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RemoteFileError {
     InvalidPath,
+    InvalidName,
     InvalidLocalFile,
     Unavailable,
     DirectoryUnavailable,
+    EntryExists,
     RemoteFileExists,
+    CreateFailed,
+    RenameFailed,
+    DeleteFailed,
     TransferCancelled,
     UploadFailed,
 }
@@ -309,10 +453,15 @@ impl std::fmt::Display for RemoteFileError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidPath => formatter.write_str("invalid remote path"),
+            Self::InvalidName => formatter.write_str("invalid remote file name"),
             Self::InvalidLocalFile => formatter.write_str("local file is unavailable"),
             Self::Unavailable => formatter.write_str("remote file session is unavailable"),
             Self::DirectoryUnavailable => formatter.write_str("remote directory is unavailable"),
+            Self::EntryExists => formatter.write_str("remote entry already exists"),
             Self::RemoteFileExists => formatter.write_str("remote file already exists"),
+            Self::CreateFailed => formatter.write_str("remote entry creation failed"),
+            Self::RenameFailed => formatter.write_str("remote entry rename failed"),
+            Self::DeleteFailed => formatter.write_str("remote entry deletion failed"),
             Self::TransferCancelled => formatter.write_str("file transfer was cancelled"),
             Self::UploadFailed => formatter.write_str("remote file upload failed"),
         }

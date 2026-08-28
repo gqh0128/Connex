@@ -169,6 +169,57 @@ impl SshSessionManager {
             .map_err(SessionManagerError::from)
     }
 
+    pub async fn create_remote_directory(
+        &self,
+        session_id: &str,
+        parent_path: &str,
+        name: &str,
+    ) -> Result<String, SessionManagerError> {
+        self.remote_file_session(session_id)
+            .await?
+            .create_directory(parent_path, name)
+            .await
+            .map_err(SessionManagerError::from)
+    }
+
+    pub async fn create_remote_file(
+        &self,
+        session_id: &str,
+        parent_path: &str,
+        name: &str,
+    ) -> Result<String, SessionManagerError> {
+        self.remote_file_session(session_id)
+            .await?
+            .create_file(parent_path, name)
+            .await
+            .map_err(SessionManagerError::from)
+    }
+
+    pub async fn rename_remote_entry(
+        &self,
+        session_id: &str,
+        path: &str,
+        new_name: &str,
+    ) -> Result<String, SessionManagerError> {
+        self.remote_file_session(session_id)
+            .await?
+            .rename_entry(path, new_name)
+            .await
+            .map_err(SessionManagerError::from)
+    }
+
+    pub async fn delete_remote_entry(
+        &self,
+        session_id: &str,
+        path: &str,
+    ) -> Result<(), SessionManagerError> {
+        self.remote_file_session(session_id)
+            .await?
+            .delete_entry(path)
+            .await
+            .map_err(SessionManagerError::from)
+    }
+
     pub async fn upload_remote_file(
         &self,
         transfer_id: String,
@@ -397,10 +448,15 @@ pub enum SessionManagerError {
     InvalidState,
     Unavailable,
     InvalidRemotePath,
+    InvalidRemoteName,
     InvalidLocalFile,
     RemoteFilesUnavailable,
     RemoteDirectoryUnavailable,
+    RemoteEntryExists,
     RemoteFileExists,
+    RemoteCreateFailed,
+    RemoteRenameFailed,
+    RemoteDeleteFailed,
     TransferCancelled,
     RemoteUploadFailed,
 }
@@ -418,10 +474,15 @@ impl From<RemoteFileError> for SessionManagerError {
     fn from(error: RemoteFileError) -> Self {
         match error {
             RemoteFileError::InvalidPath => Self::InvalidRemotePath,
+            RemoteFileError::InvalidName => Self::InvalidRemoteName,
             RemoteFileError::InvalidLocalFile => Self::InvalidLocalFile,
             RemoteFileError::Unavailable => Self::RemoteFilesUnavailable,
             RemoteFileError::DirectoryUnavailable => Self::RemoteDirectoryUnavailable,
+            RemoteFileError::EntryExists => Self::RemoteEntryExists,
             RemoteFileError::RemoteFileExists => Self::RemoteFileExists,
+            RemoteFileError::CreateFailed => Self::RemoteCreateFailed,
+            RemoteFileError::RenameFailed => Self::RemoteRenameFailed,
+            RemoteFileError::DeleteFailed => Self::RemoteDeleteFailed,
             RemoteFileError::TransferCancelled => Self::TransferCancelled,
             RemoteFileError::UploadFailed => Self::RemoteUploadFailed,
         }
@@ -436,12 +497,17 @@ impl std::fmt::Display for SessionManagerError {
             Self::InvalidState => formatter.write_str("SSH session is not ready for this action"),
             Self::Unavailable => formatter.write_str("SSH session is unavailable"),
             Self::InvalidRemotePath => formatter.write_str("remote path is invalid"),
+            Self::InvalidRemoteName => formatter.write_str("remote entry name is invalid"),
             Self::InvalidLocalFile => formatter.write_str("local file is unavailable"),
             Self::RemoteFilesUnavailable => formatter.write_str("SFTP session is unavailable"),
             Self::RemoteDirectoryUnavailable => {
                 formatter.write_str("remote directory is unavailable")
             }
+            Self::RemoteEntryExists => formatter.write_str("remote entry already exists"),
             Self::RemoteFileExists => formatter.write_str("remote file already exists"),
+            Self::RemoteCreateFailed => formatter.write_str("remote entry creation failed"),
+            Self::RemoteRenameFailed => formatter.write_str("remote entry rename failed"),
+            Self::RemoteDeleteFailed => formatter.write_str("remote entry deletion failed"),
             Self::TransferCancelled => formatter.write_str("file transfer was cancelled"),
             Self::RemoteUploadFailed => formatter.write_str("remote file upload failed"),
         }

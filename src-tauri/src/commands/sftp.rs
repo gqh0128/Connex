@@ -24,6 +24,57 @@ pub async fn list_remote_directory(
 }
 
 #[tauri::command]
+pub async fn create_remote_directory(
+    session_id: String,
+    parent_path: String,
+    name: String,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<String, CommandError> {
+    sessions
+        .create_remote_directory(&session_id, &parent_path, &name)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn create_remote_file(
+    session_id: String,
+    parent_path: String,
+    name: String,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<String, CommandError> {
+    sessions
+        .create_remote_file(&session_id, &parent_path, &name)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn rename_remote_entry(
+    session_id: String,
+    path: String,
+    new_name: String,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<String, CommandError> {
+    sessions
+        .rename_remote_entry(&session_id, &path, &new_name)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn delete_remote_entry(
+    session_id: String,
+    path: String,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<(), CommandError> {
+    sessions
+        .delete_remote_entry(&session_id, &path)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn upload_remote_file(
     input: UploadRemoteFileInput,
     on_progress: Channel<RemoteUploadProgressDto>,

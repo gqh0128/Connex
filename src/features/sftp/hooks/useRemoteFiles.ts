@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getCommandError } from "@/lib/tauri/errors";
-import { listRemoteDirectory } from "@/lib/tauri/sftp";
+import {
+  createRemoteDirectory,
+  createRemoteFile,
+  deleteRemoteEntry,
+  listRemoteDirectory,
+  renameRemoteEntry,
+} from "@/lib/tauri/sftp";
 import type { CommandError } from "@/types/ipc";
 import type { SessionSnapshot } from "@/types/sessions";
 import type { RemoteDirectory } from "@/types/sftp";
@@ -24,6 +30,8 @@ type NavigationRequest = {
 export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boolean) {
   const connectedSessionId =
     isEnabled && session?.state === "connected" ? session.id : null;
+  const connectedSessionIdRef = useRef(connectedSessionId);
+  connectedSessionIdRef.current = connectedSessionId;
   const requestIdRef = useRef(0);
   const failedNavigationRef = useRef<NavigationRequest | null>(null);
   const [remoteFiles, setRemoteFiles] = useState<RemoteFilesState>({
@@ -166,6 +174,73 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
     );
   }, [currentRemoteFiles.directory?.path, loadDirectory]);
 
+  const createDirectory = useCallback(
+    async (name: string) => {
+      const sessionId = connectedSessionId;
+      const directoryPath = currentRemoteFiles.directory?.path;
+      if (!sessionId || !directoryPath) {
+        throw REMOTE_FILES_NOT_READY_ERROR;
+      }
+
+      const path = await createRemoteDirectory(sessionId, directoryPath, name);
+      if (connectedSessionIdRef.current === sessionId) {
+        await loadDirectory({ path: directoryPath, mode: "replace" });
+      }
+      return path;
+    },
+    [connectedSessionId, currentRemoteFiles.directory?.path, loadDirectory],
+  );
+
+  const createFile = useCallback(
+    async (name: string) => {
+      const sessionId = connectedSessionId;
+      const directoryPath = currentRemoteFiles.directory?.path;
+      if (!sessionId || !directoryPath) {
+        throw REMOTE_FILES_NOT_READY_ERROR;
+      }
+
+      const path = await createRemoteFile(sessionId, directoryPath, name);
+      if (connectedSessionIdRef.current === sessionId) {
+        await loadDirectory({ path: directoryPath, mode: "replace" });
+      }
+      return path;
+    },
+    [connectedSessionId, currentRemoteFiles.directory?.path, loadDirectory],
+  );
+
+  const renameEntry = useCallback(
+    async (path: string, newName: string) => {
+      const sessionId = connectedSessionId;
+      const directoryPath = currentRemoteFiles.directory?.path;
+      if (!sessionId || !directoryPath) {
+        throw REMOTE_FILES_NOT_READY_ERROR;
+      }
+
+      const nextPath = await renameRemoteEntry(sessionId, path, newName);
+      if (connectedSessionIdRef.current === sessionId) {
+        await loadDirectory({ path: directoryPath, mode: "replace" });
+      }
+      return nextPath;
+    },
+    [connectedSessionId, currentRemoteFiles.directory?.path, loadDirectory],
+  );
+
+  const deleteEntry = useCallback(
+    async (path: string) => {
+      const sessionId = connectedSessionId;
+      const directoryPath = currentRemoteFiles.directory?.path;
+      if (!sessionId || !directoryPath) {
+        throw REMOTE_FILES_NOT_READY_ERROR;
+      }
+
+      await deleteRemoteEntry(sessionId, path);
+      if (connectedSessionIdRef.current === sessionId) {
+        await loadDirectory({ path: directoryPath, mode: "replace" });
+      }
+    },
+    [connectedSessionId, currentRemoteFiles.directory?.path, loadDirectory],
+  );
+
   return {
     directory: currentRemoteFiles.directory,
     error: currentRemoteFiles.error,
@@ -177,6 +252,10 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
       currentRemoteFiles.historyIndex < currentRemoteFiles.history.length - 1,
     goBack,
     goForward,
+    createDirectory,
+    createFile,
+    renameEntry,
+    deleteEntry,
     openDirectory,
     refresh,
     retry,
@@ -184,6 +263,12 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
 }
 
 export type RemoteFilesController = ReturnType<typeof useRemoteFiles>;
+
+const REMOTE_FILES_NOT_READY_ERROR: CommandError = {
+  code: "remote_files_not_ready",
+  message: "远程文件尚未就绪，请等待目录加载完成后重试。",
+  field: null,
+};
 
 function applySuccessfulNavigation(
   current: RemoteFilesState,

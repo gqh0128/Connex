@@ -72,6 +72,11 @@ impl From<SessionManagerError> for CommandError {
                 message: "远程路径无效，请返回上一级目录后重试。",
                 field: Some("path"),
             },
+            SessionManagerError::InvalidRemoteName => Self {
+                code: "invalid_remote_name",
+                message: "名称不能为空，且不能是 .、.. 或包含 /。",
+                field: Some("name"),
+            },
             SessionManagerError::InvalidLocalFile => Self {
                 code: "local_file_unavailable",
                 message: "无法读取这个本地文件，请检查文件是否仍然存在以及访问权限。",
@@ -87,10 +92,30 @@ impl From<SessionManagerError> for CommandError {
                 message: "无法读取这个远程目录，请检查路径和访问权限。",
                 field: Some("path"),
             },
+            SessionManagerError::RemoteEntryExists => Self {
+                code: "remote_entry_exists",
+                message: "当前目录中已经存在同名文件或文件夹。",
+                field: Some("name"),
+            },
             SessionManagerError::RemoteFileExists => Self {
                 code: "remote_file_exists",
                 message: "远程目录中已经存在同名文件，Connex 没有覆盖它。",
                 field: Some("remoteDirectory"),
+            },
+            SessionManagerError::RemoteCreateFailed => Self {
+                code: "remote_create_failed",
+                message: "创建失败，请检查当前目录权限和连接状态。",
+                field: None,
+            },
+            SessionManagerError::RemoteRenameFailed => Self {
+                code: "remote_rename_failed",
+                message: "重命名失败，请检查文件权限和连接状态。",
+                field: None,
+            },
+            SessionManagerError::RemoteDeleteFailed => Self {
+                code: "remote_delete_failed",
+                message: "删除失败，请检查权限；文件夹必须为空才能删除。",
+                field: None,
             },
             SessionManagerError::TransferCancelled => Self {
                 code: "transfer_cancelled",
