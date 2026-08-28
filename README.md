@@ -2,7 +2,7 @@
 
 Connex 是一款轻量桌面 SSH 客户端。第一阶段以可靠的远程终端为核心，并在同一工作区中提供 SFTP 文件浏览和传输。
 
-项目当前处于基础架构阶段，已经完成 React/Tauri 工程初始化、桌面应用壳、UI 主题和基本质量检查。SSH 与 SFTP 连接能力将在后续小模块中逐步实现。
+项目当前处于基础架构阶段，已经完成 React/Tauri 工程初始化、桌面应用壳、主题设计基线和基本质量检查。SSH 与 SFTP 连接能力将在后续小模块中逐步实现。
 
 ## 技术栈
 
@@ -62,4 +62,4 @@ pnpm build
 - `dev`：唯一日常开发分支，所有功能直接在这里按小模块提交。
 - 不创建功能分支，也不自动合并到 `master`。
 
-更详细的开发约束见 [AGENTS.md](./AGENTS.md)，运行时与模块设计见 [docs/architecture.md](./docs/architecture.md)。
+更详细的开发约束见 [AGENTS.md](./AGENTS.md)，运行时与模块设计见 [docs/architecture.md](./docs/architecture.md)，前端布局和主题基线见 [docs/ui-design-system.md](./docs/ui-design-system.md)。

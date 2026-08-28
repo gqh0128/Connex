@@ -1,6 +1,6 @@
 # Connex 开发约定
 
-本文件适用于整个仓库。修改任何模块前先阅读本文件；架构发生变化时，同步更新本文和 `docs/architecture.md`。
+本文件适用于整个仓库。修改任何模块前先阅读本文件；架构发生变化时，同步更新本文和 `docs/architecture.md`；布局、主题或组件基线变化时，同步更新 `docs/ui-design-system.md`。
 
 ## 产品目标与当前范围
 
@@ -10,9 +10,9 @@ Connex 是桌面 SSH 客户端。第一阶段只围绕以下主流程开发：�
 
 ## Git 工作流
 
-- `main` 是稳定分支，由用户手动合并。
+- `master` 是稳定分支，由用户手动合并。
 - `dev` 是唯一开发分支。开始工作前确认当前分支为 `dev`。
-- 不创建功能分支，不自动合并或变基 `main`，未经明确要求不推送远端。
+- 不创建功能分支，不自动合并或变基 `master`，未经明确要求不推送远端。
 - 每个提交只完成一个可描述的小模块，使用 Conventional Commits：`feat:`、`fix:`、`refactor:`、`chore:`、`docs:`。
 - 提交前检查工作区，保留用户已有改动，不重写无关文件。
 
@@ -108,6 +108,7 @@ src-tauri/src/
 - 不使用索引作为会变化列表的 key，不在 render 中创建有副作用的对象。
 - 图标按钮必须有可访问名称；表单控件必须有 label 或 `aria-label`。
 - Tailwind 类优先，主题值必须来自 `src/styles/globals.css` 的语义 token，避免散落硬编码颜色。
+- 用户可见布局、主题、配色、密度和状态映射遵循 `docs/ui-design-system.md`；有意改变基线时必须在同一提交更新文档。
 - shadcn/ui 组件是仓库自有代码，可以按产品需要修改，但通用原语与业务组件必须分开。
 
 ## shadcn/ui Skill 工作流
