@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { App } from "@/app/App";
 import { ThemeProvider } from "@/app/ThemeProvider";
 import { initializeTheme } from "@/app/theme";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "@/styles/globals.css";
 
 initializeTheme();
@@ -10,7 +11,9 @@ initializeTheme();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
-      <App />
+      <TooltipProvider delayDuration={350}>
+        <App />
+      </TooltipProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

@@ -6,13 +6,25 @@ import {
   MoreHorizontal,
   RefreshCw,
   Upload,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-export function FilePanel() {
+type FilePanelProps = {
+  className?: string;
+  onClose?: () => void;
+};
+
+export function FilePanel({ className, onClose }: FilePanelProps) {
   return (
-    <aside className="flex min-h-0 flex-col border-l border-border bg-sidebar/75">
+    <aside
+      className={cn(
+        "flex min-h-0 flex-col border-l border-border bg-surface",
+        className,
+      )}
+    >
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
         <div className="flex items-center gap-2 text-xs font-medium">
           <Folder className="size-3.5 text-primary" />
@@ -24,6 +36,9 @@ export function FilePanel() {
           <PanelButton label="新建目录" icon={FolderPlus} disabled />
           <PanelButton label="刷新" icon={RefreshCw} disabled />
           <PanelButton label="更多操作" icon={MoreHorizontal} disabled />
+          {onClose ? (
+            <PanelButton label="关闭文件面板" icon={X} onClick={onClose} />
+          ) : null}
         </div>
       </div>
 
@@ -64,20 +79,20 @@ type PanelButtonProps = {
   label: string;
   icon: typeof Upload;
   disabled?: boolean;
+  onClick?: () => void;
 };
 
-function PanelButton({ label, icon: Icon, disabled }: PanelButtonProps) {
+function PanelButton({ label, icon: Icon, disabled, onClick }: PanelButtonProps) {
   return (
     <Button
       type="button"
       variant="ghost"
-      size="icon"
+      size="icon-sm"
       aria-label={label}
-      title={label}
       disabled={disabled}
-      className="size-7 text-muted-foreground"
+      onClick={onClick}
     >
-      <Icon className="size-3.5" />
+      <Icon />
     </Button>
   );
 }
