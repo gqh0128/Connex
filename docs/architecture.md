@@ -143,6 +143,8 @@ local file ↔ Rust buffered I/O ↔ SFTP channel ↔ remote file
 
 数据库从第一张表开始使用版本化 migration，不在启动代码里散落 `CREATE TABLE`。密码和私钥口令不进入数据库；它们存入系统凭据管理器，SQLite 只保存稳定引用。Linux 没有可用 secret service 时，禁用“记住密码”，不能退化为明文文件。
 
+连接配置持久化使用 Rust 侧 `tokio-rusqlite` 的独立数据库线程，SQLite 以 bundled 模式随应用构建，避免平台系统库版本差异。数据库文件位于 Tauri 应用数据目录，初始 migration 为 `src-tauri/migrations/0001_create_connections.sql`。前端只通过类型化 commands 访问连接配置，不能直接执行 SQL。
+
 ## 10. 技术验证门槛
 
 在完整连接 UI 之前先完成 SSH 技术验证，至少覆盖：
