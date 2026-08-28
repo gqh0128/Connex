@@ -45,6 +45,12 @@ impl SshConnector {
         events: mpsc::Sender<SessionEvent>,
     ) -> Result<SshSessionEnd, SshTransportError> {
         let reporter = SessionReporter::new(snapshot, events);
+        let stream = connect_tcp(
+            &request.profile.host,
+            request.profile.port,
+            cancellation.clone(),
+        )
+        .await?;
         let known_keys = self
             .known_hosts
             .list_for_host(&request.profile.host, request.profile.port)
@@ -60,13 +66,6 @@ impl SshConnector {
             cancellation: cancellation.clone(),
             reporter: reporter.clone(),
         };
-
-        let stream = connect_tcp(
-            &request.profile.host,
-            request.profile.port,
-            cancellation.clone(),
-        )
-        .await?;
         let config = Arc::new(client::Config {
             keepalive_interval: Some(Duration::from_secs(15)),
             keepalive_max: 3,
