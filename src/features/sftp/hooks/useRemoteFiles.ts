@@ -21,8 +21,9 @@ type NavigationRequest = {
   historyIndex?: number;
 };
 
-export function useRemoteFiles(session: SessionSnapshot | null) {
-  const connectedSessionId = session?.state === "connected" ? session.id : null;
+export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boolean) {
+  const connectedSessionId =
+    isEnabled && session?.state === "connected" ? session.id : null;
   const requestIdRef = useRef(0);
   const failedNavigationRef = useRef<NavigationRequest | null>(null);
   const [remoteFiles, setRemoteFiles] = useState<RemoteFilesState>({

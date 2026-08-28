@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::{Mutex, RwLock, mpsc, watch};
+use tokio::sync::{Mutex, RwLock, mpsc, oneshot, watch};
 use uuid::Uuid;
 
 use crate::domain::connections::ConnectionProfile;
@@ -20,6 +20,7 @@ use crate::infrastructure::ssh::{
 
 const CONTROL_QUEUE_CAPACITY: usize = 64;
 const HOST_KEY_QUEUE_CAPACITY: usize = 1;
+const REMOTE_FILE_REQUEST_QUEUE_CAPACITY: usize = 4;
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
 #[derive(Clone)]
@@ -50,15 +51,18 @@ impl SshSessionManager {
             .map_err(SessionManagerError::from)?;
         let initial_snapshot = SessionSnapshot::connecting(session_id.clone(), &request.profile);
         let snapshot = Arc::new(RwLock::new(initial_snapshot.clone()));
-        let remote_files = Arc::new(RwLock::new(RemoteFileSessionState::Connecting));
+        let remote_files = Arc::new(RwLock::new(RemoteFileSessionState::Idle));
         let (control_sender, control_receiver) = mpsc::channel(CONTROL_QUEUE_CAPACITY);
         let (host_key_sender, host_key_receiver) = mpsc::channel(HOST_KEY_QUEUE_CAPACITY);
+        let (remote_file_request_sender, remote_file_request_receiver) =
+            mpsc::channel(REMOTE_FILE_REQUEST_QUEUE_CAPACITY);
         let (cancellation_sender, cancellation_receiver) = watch::channel(false);
         let entry = SessionEntry {
             snapshot: snapshot.clone(),
             remote_files: remote_files.clone(),
             controls: control_sender,
             host_key_decisions: host_key_sender,
+            remote_file_requests: remote_file_request_sender,
             cancellation: cancellation_sender,
             events: events.clone(),
         };
@@ -87,6 +91,7 @@ impl SshSessionManager {
                         remote_files,
                         controls: control_receiver,
                         host_key_decisions: host_key_receiver,
+                        remote_file_requests: remote_file_request_receiver,
                         cancellation: cancellation_receiver,
                         events: events.clone(),
                     },
@@ -290,9 +295,26 @@ impl SshSessionManager {
             return Err(SessionManagerError::InvalidState);
         }
 
+        if let RemoteFileSessionState::Ready(remote_files) = entry.remote_files.read().await.clone()
+        {
+            return Ok(remote_files);
+        }
+
+        let (completion_sender, completion_receiver) = oneshot::channel();
+        entry
+            .remote_file_requests
+            .send(completion_sender)
+            .await
+            .map_err(|_| SessionManagerError::RemoteFilesUnavailable)?;
+        completion_receiver
+            .await
+            .map_err(|_| SessionManagerError::RemoteFilesUnavailable)?;
+
         match entry.remote_files.read().await.clone() {
             RemoteFileSessionState::Ready(remote_files) => Ok(remote_files),
-            RemoteFileSessionState::Connecting | RemoteFileSessionState::Unavailable => {
+            RemoteFileSessionState::Idle
+            | RemoteFileSessionState::Connecting
+            | RemoteFileSessionState::Unavailable => {
                 Err(SessionManagerError::RemoteFilesUnavailable)
             }
         }
@@ -323,6 +345,7 @@ struct SessionEntry {
     remote_files: SharedRemoteFileSession,
     controls: mpsc::Sender<SessionControl>,
     host_key_decisions: mpsc::Sender<HostKeyDecision>,
+    remote_file_requests: mpsc::Sender<oneshot::Sender<()>>,
     cancellation: watch::Sender<bool>,
     events: mpsc::Sender<SessionEvent>,
 }

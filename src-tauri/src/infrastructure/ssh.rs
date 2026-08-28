@@ -9,7 +9,7 @@ use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use russh::{ChannelMsg, Disconnect};
 use tokio::net::TcpStream;
-use tokio::sync::{Mutex, RwLock, mpsc, watch};
+use tokio::sync::{Mutex, RwLock, mpsc, oneshot, watch};
 use tokio::time::timeout;
 
 use crate::domain::known_hosts::KnownHostKey;
@@ -34,6 +34,7 @@ pub struct SshSessionRuntime {
     pub remote_files: SharedRemoteFileSession,
     pub controls: mpsc::Receiver<SessionControl>,
     pub host_key_decisions: mpsc::Receiver<HostKeyDecision>,
+    pub remote_file_requests: mpsc::Receiver<oneshot::Sender<()>>,
     pub cancellation: watch::Receiver<bool>,
     pub events: mpsc::Sender<SessionEvent>,
 }
@@ -58,6 +59,7 @@ impl SshConnector {
             remote_files,
             controls,
             host_key_decisions,
+            remote_file_requests,
             cancellation,
             events,
         } = runtime;
@@ -138,11 +140,66 @@ impl SshConnector {
         )
         .await??;
         cancellable(cancellation.clone(), channel.request_shell(true)).await??;
-        let remote_file_state = connect_remote_files(&session, cancellation.clone()).await?;
-        *remote_files.write().await = remote_file_state;
         reporter.transition(SessionState::Connected, None).await?;
 
-        run_shell_loop(&mut session, &mut channel, controls, cancellation, reporter).await
+        tokio::select! {
+            shell_result = run_shell_loop(
+                &session,
+                &mut channel,
+                controls,
+                cancellation.clone(),
+                reporter,
+            ) => shell_result,
+            _ = run_remote_file_loop(
+                &session,
+                remote_files,
+                remote_file_requests,
+                cancellation,
+            ) => {
+                close_remote_session(&session, &channel).await;
+                Ok(SshSessionEnd::Closed)
+            }
+        }
+    }
+}
+
+async fn run_remote_file_loop(
+    session: &client::Handle<HostKeyHandler>,
+    remote_files: SharedRemoteFileSession,
+    mut requests: mpsc::Receiver<oneshot::Sender<()>>,
+    mut cancellation: watch::Receiver<bool>,
+) {
+    loop {
+        tokio::select! {
+            _ = cancellation.changed() => return,
+            request = requests.recv() => {
+                let Some(completion) = request else {
+                    return;
+                };
+                let is_ready = matches!(
+                    &*remote_files.read().await,
+                    RemoteFileSessionState::Ready(_)
+                );
+
+                let should_stop = if is_ready {
+                    false
+                } else {
+                    *remote_files.write().await = RemoteFileSessionState::Connecting;
+                    let (next_state, should_stop) =
+                        match connect_remote_files(session, cancellation.clone()).await {
+                            Ok(next_state) => (next_state, false),
+                            Err(_) => (RemoteFileSessionState::Unavailable, true),
+                        };
+                    *remote_files.write().await = next_state;
+                    should_stop
+                };
+
+                let _ = completion.send(());
+                if should_stop {
+                    return;
+                }
+            }
+        }
     }
 }
 
@@ -310,7 +367,7 @@ where
 }
 
 async fn run_shell_loop(
-    session: &mut client::Handle<HostKeyHandler>,
+    session: &client::Handle<HostKeyHandler>,
     channel: &mut russh::Channel<client::Msg>,
     mut controls: mpsc::Receiver<SessionControl>,
     mut cancellation: watch::Receiver<bool>,

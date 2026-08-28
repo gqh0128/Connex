@@ -396,7 +396,13 @@ function RemoteFileRow({ entry, onOpenDirectory, onRefresh }: RemoteFileRowProps
               <button
                 type="button"
                 className="block w-full min-w-0 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                onClick={() => onOpenDirectory(entry.path)}
+                title="双击打开目录"
+                onClick={(event) => {
+                  if (event.detail === 0) {
+                    onOpenDirectory(entry.path);
+                  }
+                }}
+                onDoubleClick={() => onOpenDirectory(entry.path)}
               >
                 {name}
               </button>

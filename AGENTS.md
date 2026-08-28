@@ -85,7 +85,7 @@ src-tauri/src/
 - SSH 输出保持原始字节，通过 `Channel<InvokeResponseBody>` 发送给 xterm.js。
 - 前端输入按极短窗口合并后以原始字节发送，避免每个按键产生大量 JSON。
 - PTY 类型默认 `xterm-256color`；首次尺寸和后续 resize 都必须同步到远端。
-- SFTP 使用独立 channel，共享已验证的 SSH transport；大文件传输不能阻塞终端输出。
+- SFTP 使用独立 channel，共享已验证的 SSH transport；只有文件面板打开后的首次目录请求才能初始化 SFTP，建立 SSH 时不得预加载；大文件传输和 SFTP 初始化都不能阻塞终端输出。
 - 上传和下载必须支持进度、取消和明确的失败状态，临时文件与覆盖策略需要显式处理。
 
 ## 安全规则

@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { WIDE_WORKSPACE_QUERY } from "@/components/layout/layoutConstants";
 import { useSshSessions } from "@/features/terminal/hooks/useSshSessions";
 import {
   WORKSPACE_PAGE_DEFINITIONS,
@@ -10,9 +9,7 @@ import {
 } from "@/types/navigation";
 
 export function App() {
-  const [isFilePanelOpen, setIsFilePanelOpen] = useState(
-    () => window.matchMedia(WIDE_WORKSPACE_QUERY).matches,
-  );
+  const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [activeView, setActiveView] = useState<AppView>("workspace");
   const [openPageIds, setOpenPageIds] = useState<WorkspacePageId[]>([]);
   const sshSessions = useSshSessions();

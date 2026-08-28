@@ -20,6 +20,7 @@ pub type SharedRemoteFileSession = Arc<RwLock<RemoteFileSessionState>>;
 
 #[derive(Clone)]
 pub enum RemoteFileSessionState {
+    Idle,
     Connecting,
     Ready(RemoteFileSession),
     Unavailable,

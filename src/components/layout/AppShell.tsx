@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDefaultLayout, usePanelRef, type PanelSize } from "react-resizable-panels";
 
 import {
@@ -65,7 +65,8 @@ export function AppShell({
   const { activeTabId, closeSession } = sshSessions;
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const activeSession = sshSessions.activeTab?.snapshot ?? null;
-  const remoteFiles = useRemoteFiles(activeSession);
+  const isRemoteFilesEnabled = activeView === "workspace" && isFilePanelOpen;
+  const remoteFiles = useRemoteFiles(activeSession, isRemoteFilesEnabled);
   const fileTransfers = useFileTransfers();
   const activeSessionIdRef = useRef(activeSession?.id ?? null);
   const remoteFilesRef = useRef(remoteFiles);
@@ -130,7 +131,7 @@ export function AppShell({
     });
   }, [activeSession, fileTransfers, remoteFiles.directory?.path]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const filePanel = filePanelRef.current;
     if (!filePanel) {
       return;
