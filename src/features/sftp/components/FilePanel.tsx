@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   File,
+  FilePlus2,
   FileQuestion,
   FileSymlink,
   Folder,
@@ -13,7 +14,9 @@ import {
   FolderPlus,
   LoaderCircle,
   MoreHorizontal,
+  Pencil,
   RefreshCw,
+  Trash2,
   Upload,
   X,
   type LucideIcon,
@@ -27,6 +30,9 @@ import {
   ContextMenuGroup,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -45,6 +51,12 @@ import { cn } from "@/lib/utils";
 import type { SessionSnapshot } from "@/types/sessions";
 import type { RemoteFileEntry, RemoteFileKind } from "@/types/sftp";
 
+import {
+  RemoteEntryDeleteDialog,
+  RemoteEntryNameDialog,
+  type RemoteEntryNameAction,
+} from "./RemoteEntryDialogs";
+
 type FilePanelProps = {
   session: SessionSnapshot | null;
   browser: RemoteFilesController;
@@ -54,7 +66,17 @@ type FilePanelProps = {
   onClose?: () => void;
 };
 
-export function FilePanel({
+export function FilePanel(props: FilePanelProps) {
+  const { session, browser } = props;
+  return (
+    <ScopedFilePanel
+      key={`${session?.id ?? "no-session"}:${browser.directory?.path ?? "no-directory"}`}
+      {...props}
+    />
+  );
+}
+
+function ScopedFilePanel({
   session,
   browser,
   isSelectingUpload = false,
@@ -63,99 +85,185 @@ export function FilePanel({
   onClose,
 }: FilePanelProps) {
   const { directory, isConnected, isLoading } = browser;
+  const [nameAction, setNameAction] = useState<RemoteEntryNameAction | null>(null);
+  const [deletingEntry, setDeletingEntry] = useState<RemoteFileEntry | null>(null);
+  const canMutate = isConnected && Boolean(directory) && !isLoading;
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <aside
-          className={cn("flex h-full min-h-0 flex-col border-l bg-surface", className)}
-        >
-          <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
-            <div className="flex items-center gap-0.5">
-              <PanelButton
-                label={isSelectingUpload ? "正在选择文件" : "上传文件"}
-                icon={Upload}
-                disabled={
-                  !isConnected ||
-                  !directory ||
-                  isLoading ||
-                  isSelectingUpload ||
-                  !onUpload
-                }
-                onClick={onUpload}
-              />
-              <PanelButton label="下载文件" icon={Download} disabled />
-              <PanelButton label="新建目录" icon={FolderPlus} disabled />
-              <PanelButton
-                label={isLoading ? "正在刷新" : "刷新"}
-                icon={RefreshCw}
-                iconClassName={cn(
-                  isLoading && "animate-spin motion-reduce:animate-none",
-                )}
-                disabled={!isConnected || isLoading}
-                onClick={browser.refresh}
-              />
-              <PanelButton label="更多操作" icon={MoreHorizontal} disabled />
-              {onClose ? (
-                <PanelButton label="关闭文件面板" icon={X} onClick={onClose} />
-              ) : null}
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <aside
+            className={cn(
+              "flex h-full min-h-0 flex-col border-l bg-surface",
+              className,
+            )}
+          >
+            <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
+              <div className="flex items-center gap-0.5">
+                <PanelButton
+                  label={isSelectingUpload ? "正在选择文件" : "上传文件"}
+                  icon={Upload}
+                  disabled={
+                    !isConnected ||
+                    !directory ||
+                    isLoading ||
+                    isSelectingUpload ||
+                    !onUpload
+                  }
+                  onClick={onUpload}
+                />
+                <PanelButton label="下载文件" icon={Download} disabled />
+                <PanelButton
+                  label="新建文件夹"
+                  icon={FolderPlus}
+                  disabled={!canMutate}
+                  onClick={() => setNameAction({ type: "createDirectory" })}
+                />
+                <PanelButton
+                  label={isLoading ? "正在刷新" : "刷新"}
+                  icon={RefreshCw}
+                  iconClassName={cn(
+                    isLoading && "animate-spin motion-reduce:animate-none",
+                  )}
+                  disabled={!isConnected || isLoading}
+                  onClick={browser.refresh}
+                />
+                <PanelButton label="更多操作" icon={MoreHorizontal} disabled />
+                {onClose ? (
+                  <PanelButton label="关闭文件面板" icon={X} onClick={onClose} />
+                ) : null}
+              </div>
             </div>
-          </div>
 
-          <RemotePath
-            path={directory?.path ?? null}
-            isConnected={isConnected}
-            isLoading={isLoading}
-            canGoBack={browser.canGoBack}
-            canGoForward={browser.canGoForward}
-            onGoBack={browser.goBack}
-            onGoForward={browser.goForward}
-            onNavigate={browser.openDirectory}
-          />
+            <RemotePath
+              path={directory?.path ?? null}
+              isConnected={isConnected}
+              isLoading={isLoading}
+              canGoBack={browser.canGoBack}
+              canGoForward={browser.canGoForward}
+              onGoBack={browser.goBack}
+              onGoForward={browser.goForward}
+              onNavigate={browser.openDirectory}
+            />
 
-          <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] border-b px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-            <span>名称</span>
-            <span>大小</span>
-            <span className="text-right">修改时间</span>
-          </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] border-b px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span>名称</span>
+              <span>大小</span>
+              <span className="text-right">修改时间</span>
+            </div>
 
-          <FilePanelContent
-            key={`${session?.id ?? "no-session"}:${directory?.path ?? "no-directory"}`}
-            session={session}
-            browser={browser}
-          />
-        </aside>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuGroup>
-          <ContextMenuItem
-            disabled={
-              !isConnected || !directory || isLoading || isSelectingUpload || !onUpload
+            <FilePanelContent
+              session={session}
+              browser={browser}
+              onRename={setNameAction}
+              onDelete={setDeletingEntry}
+            />
+          </aside>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuGroup>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger disabled={!canMutate}>
+                <FilePlus2 />
+                新建
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                <ContextMenuGroup>
+                  <ContextMenuItem
+                    onSelect={() => setNameAction({ type: "createDirectory" })}
+                  >
+                    <FolderPlus />
+                    新建文件夹
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onSelect={() => setNameAction({ type: "createFile" })}
+                  >
+                    <FilePlus2 />
+                    新建文件
+                  </ContextMenuItem>
+                </ContextMenuGroup>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+          </ContextMenuGroup>
+          <ContextMenuSeparator />
+          <ContextMenuGroup>
+            <ContextMenuItem
+              disabled={
+                !isConnected ||
+                !directory ||
+                isLoading ||
+                isSelectingUpload ||
+                !onUpload
+              }
+              onSelect={onUpload}
+            >
+              <Upload />
+              上传文件…
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={!isConnected || isLoading}
+              onSelect={browser.refresh}
+            >
+              <RefreshCw />
+              刷新目录
+            </ContextMenuItem>
+          </ContextMenuGroup>
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {nameAction ? (
+        <RemoteEntryNameDialog
+          action={nameAction}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setNameAction(null);
             }
-            onSelect={onUpload}
-          >
-            <Upload />
-            上传文件…
-          </ContextMenuItem>
-          <ContextMenuItem
-            disabled={!isConnected || isLoading}
-            onSelect={browser.refresh}
-          >
-            <RefreshCw />
-            刷新目录
-          </ContextMenuItem>
-        </ContextMenuGroup>
-      </ContextMenuContent>
-    </ContextMenu>
+          }}
+          onSubmit={async (name) => {
+            switch (nameAction.type) {
+              case "createDirectory":
+                await browser.createDirectory(name);
+                break;
+              case "createFile":
+                await browser.createFile(name);
+                break;
+              case "rename":
+                await browser.renameEntry(nameAction.entry.path, name);
+                break;
+            }
+          }}
+        />
+      ) : null}
+
+      {deletingEntry ? (
+        <RemoteEntryDeleteDialog
+          entry={deletingEntry}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setDeletingEntry(null);
+            }
+          }}
+          onDelete={() => browser.deleteEntry(deletingEntry.path)}
+        />
+      ) : null}
+    </>
   );
 }
 
 type FilePanelContentProps = {
   session: SessionSnapshot | null;
   browser: RemoteFilesController;
+  onRename: (action: RemoteEntryNameAction) => void;
+  onDelete: (entry: RemoteFileEntry) => void;
 };
 
-function FilePanelContent({ session, browser }: FilePanelContentProps) {
+function FilePanelContent({
+  session,
+  browser,
+  onRename,
+  onDelete,
+}: FilePanelContentProps) {
   const { directory, error, isLoading } = browser;
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
@@ -232,8 +340,11 @@ function FilePanelContent({ session, browser }: FilePanelContentProps) {
             key={entry.path}
             entry={entry}
             isSelected={entry.path === selectedPath}
+            isBusy={isLoading}
             onSelect={() => setSelectedPath(entry.path)}
             onOpenDirectory={browser.openDirectory}
+            onRename={() => onRename({ type: "rename", entry })}
+            onDelete={() => onDelete(entry)}
             onRefresh={browser.refresh}
           />
         ))}
@@ -380,16 +491,22 @@ function getPathBreadcrumbs(path: string): PathBreadcrumb[] {
 type RemoteFileRowProps = {
   entry: RemoteFileEntry;
   isSelected: boolean;
+  isBusy: boolean;
   onSelect: () => void;
   onOpenDirectory: (path: string) => void;
+  onRename: () => void;
+  onDelete: () => void;
   onRefresh: () => void;
 };
 
 function RemoteFileRow({
   entry,
   isSelected,
+  isBusy,
   onSelect,
   onOpenDirectory,
+  onRename,
+  onDelete,
   onRefresh,
 }: RemoteFileRowProps) {
   const name = (
@@ -459,6 +576,10 @@ function RemoteFileRow({
           </>
         ) : null}
         <ContextMenuGroup>
+          <ContextMenuItem disabled={isBusy} onSelect={onRename}>
+            <Pencil />
+            重命名…
+          </ContextMenuItem>
           <ContextMenuItem
             disabled={!canWriteClipboardText()}
             onSelect={() => {
@@ -471,6 +592,13 @@ function RemoteFileRow({
           <ContextMenuItem onSelect={onRefresh}>
             <RefreshCw />
             刷新所在目录
+          </ContextMenuItem>
+        </ContextMenuGroup>
+        <ContextMenuSeparator />
+        <ContextMenuGroup>
+          <ContextMenuItem variant="destructive" disabled={isBusy} onSelect={onDelete}>
+            <Trash2 />
+            删除…
           </ContextMenuItem>
         </ContextMenuGroup>
       </ContextMenuContent>
