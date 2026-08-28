@@ -18,6 +18,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -118,7 +119,11 @@ export function FilePanel({
             <span className="text-right">修改时间</span>
           </div>
 
-          <FilePanelContent session={session} browser={browser} />
+          <FilePanelContent
+            key={`${session?.id ?? "no-session"}:${directory?.path ?? "no-directory"}`}
+            session={session}
+            browser={browser}
+          />
         </aside>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -152,6 +157,7 @@ type FilePanelContentProps = {
 
 function FilePanelContent({ session, browser }: FilePanelContentProps) {
   const { directory, error, isLoading } = browser;
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   if (!session) {
     return (
@@ -220,11 +226,13 @@ function FilePanelContent({ session, browser }: FilePanelContentProps) {
 
   return (
     <ScrollArea className="min-h-0 flex-1" aria-busy={isLoading}>
-      <div role="list" aria-label={`${directory.path} 的远程文件`}>
+      <div role="listbox" aria-label={`${directory.path} 的远程文件`}>
         {directory.entries.map((entry) => (
           <RemoteFileRow
             key={entry.path}
             entry={entry}
+            isSelected={entry.path === selectedPath}
+            onSelect={() => setSelectedPath(entry.path)}
             onOpenDirectory={browser.openDirectory}
             onRefresh={browser.refresh}
           />
@@ -371,11 +379,19 @@ function getPathBreadcrumbs(path: string): PathBreadcrumb[] {
 
 type RemoteFileRowProps = {
   entry: RemoteFileEntry;
+  isSelected: boolean;
+  onSelect: () => void;
   onOpenDirectory: (path: string) => void;
   onRefresh: () => void;
 };
 
-function RemoteFileRow({ entry, onOpenDirectory, onRefresh }: RemoteFileRowProps) {
+function RemoteFileRow({
+  entry,
+  isSelected,
+  onSelect,
+  onOpenDirectory,
+  onRefresh,
+}: RemoteFileRowProps) {
   const name = (
     <span className="flex min-w-0 items-center gap-2">
       <RemoteFileIcon kind={entry.kind} />
@@ -387,29 +403,41 @@ function RemoteFileRow({ entry, onOpenDirectory, onRefresh }: RemoteFileRowProps
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          role="listitem"
-          className="grid min-h-8 grid-cols-[minmax(0,1fr)_4.5rem_4rem] items-center border-b px-3 text-xs last:border-b-0 hover:bg-accent/60 data-[state=open]:bg-accent/60"
-          onContextMenu={(event) => event.stopPropagation()}
+          role="option"
+          tabIndex={0}
+          aria-selected={isSelected}
+          className={cn(
+            "grid min-h-8 cursor-default grid-cols-[minmax(0,1fr)_4.5rem_4rem] items-center border-b px-3 text-xs outline-none last:border-b-0 hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=open]:bg-accent",
+            isSelected && "bg-accent text-accent-foreground",
+          )}
+          title={entry.kind === "directory" ? "双击打开目录" : undefined}
+          onClick={onSelect}
+          onDoubleClick={() => {
+            if (entry.kind === "directory") {
+              onOpenDirectory(entry.path);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === " ") {
+              event.preventDefault();
+              onSelect();
+              return;
+            }
+
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onSelect();
+              if (entry.kind === "directory") {
+                onOpenDirectory(entry.path);
+              }
+            }
+          }}
+          onContextMenu={(event) => {
+            onSelect();
+            event.stopPropagation();
+          }}
         >
-          <div className="min-w-0">
-            {entry.kind === "directory" ? (
-              <button
-                type="button"
-                className="block w-full min-w-0 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                title="双击打开目录"
-                onClick={(event) => {
-                  if (event.detail === 0) {
-                    onOpenDirectory(entry.path);
-                  }
-                }}
-                onDoubleClick={() => onOpenDirectory(entry.path)}
-              >
-                {name}
-              </button>
-            ) : (
-              name
-            )}
-          </div>
+          <div className="min-w-0">{name}</div>
           <div className="truncate tabular-nums text-muted-foreground">
             {formatFileSize(entry)}
           </div>
