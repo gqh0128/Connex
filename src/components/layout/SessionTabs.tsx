@@ -1,18 +1,23 @@
 import { Files, LoaderCircle, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getSessionPresentation } from "@/features/terminal/sessionPresentation";
 import type { SessionTone } from "@/features/terminal/sessionPresentation";
 import type { SshSessionTab } from "@/features/terminal/sessionTypes";
 import { cn } from "@/lib/utils";
 
+import { SidebarToggleButton } from "./SidebarToggleButton";
+
 type SessionTabsProps = {
   tabs: SshSessionTab[];
   activeTabId: string | null;
+  isSidebarCollapsed: boolean;
   isFilePanelOpen: boolean;
   onSelect: (localId: string) => void;
   onClose: (localId: string) => void;
+  onSidebarToggle: () => void;
   onNewConnection: () => void;
   onFilePanelToggle: () => void;
 };
@@ -20,14 +25,38 @@ type SessionTabsProps = {
 export function SessionTabs({
   tabs,
   activeTabId,
+  isSidebarCollapsed,
   isFilePanelOpen,
   onSelect,
   onClose,
+  onSidebarToggle,
   onNewConnection,
   onFilePanelToggle,
 }: SessionTabsProps) {
   return (
     <header className="flex h-11 shrink-0 items-stretch border-b bg-surface">
+      <div className="flex shrink-0 items-center gap-0.5 px-1">
+        <SidebarToggleButton
+          isCollapsed={isSidebarCollapsed}
+          onToggle={onSidebarToggle}
+        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="新建连接标签页"
+              onClick={onNewConnection}
+            >
+              <Plus data-icon="inline-start" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">新建连接</TooltipContent>
+        </Tooltip>
+      </div>
+      <Separator orientation="vertical" />
+
       <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto" role="tablist">
         {tabs.map((tab) => {
           const isActive = tab.localId === activeTabId;
@@ -84,22 +113,6 @@ export function SessionTabs({
             </div>
           );
         })}
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="新建连接标签页"
-              className="m-1.5"
-              onClick={onNewConnection}
-            >
-              <Plus data-icon="inline-start" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>新建连接</TooltipContent>
-        </Tooltip>
       </div>
 
       <div className="flex items-center border-l px-1.5">

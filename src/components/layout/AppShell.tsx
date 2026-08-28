@@ -1,20 +1,19 @@
-import { ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDefaultLayout, usePanelRef, type PanelSize } from "react-resizable-panels";
 
-import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ConnectionSidebar,
   type ConnectionSidebarHandle,
@@ -30,6 +29,7 @@ import type { AppView } from "@/types/navigation";
 
 import { AppTitleBar } from "./AppTitleBar";
 import { SessionTabs } from "./SessionTabs";
+import { SidebarToggleButton } from "./SidebarToggleButton";
 import { StatusBar } from "./StatusBar";
 import { WIDE_WORKSPACE_QUERY } from "./layoutConstants";
 
@@ -160,13 +160,8 @@ export function AppShell({
           />
         </ResizablePanel>
         <ResizableHandle />
-        <ResizablePanel id="workspace" minSize={580}>
+        <ResizablePanel id="workspace" minSize={560}>
           <main className="relative h-full min-w-0 bg-workspace">
-            <SidebarCollapseButton
-              isCollapsed={isSidebarCollapsed}
-              onToggle={handleSidebarToggle}
-            />
-
             <div
               aria-hidden={activeView !== "workspace"}
               className={cn(
@@ -179,14 +174,16 @@ export function AppShell({
               <SessionTabs
                 tabs={sshSessions.tabs}
                 activeTabId={sshSessions.activeTabId}
+                isSidebarCollapsed={isSidebarCollapsed}
                 isFilePanelOpen={isFilePanelOpen}
                 onSelect={sshSessions.selectSession}
                 onClose={sshSessions.closeSession}
+                onSidebarToggle={handleSidebarToggle}
                 onNewConnection={openNewConnection}
                 onFilePanelToggle={() => onFilePanelOpenChange(!isFilePanelOpen)}
               />
 
-              <div className="min-h-0 flex-1 bg-terminal pl-5">
+              <div className="min-h-0 flex-1">
                 <ResizablePanelGroup
                   orientation="horizontal"
                   defaultLayout={fileLayout.defaultLayout}
@@ -232,13 +229,20 @@ export function AppShell({
 
             {activeView === "settings" ? (
               <div className="absolute inset-0 flex min-w-0 flex-col bg-workspace">
-                <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-surface px-4">
-                  <Settings2 className="size-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">设置</span>
+                <header className="flex h-11 shrink-0 items-stretch border-b bg-surface">
+                  <div className="flex shrink-0 items-center px-1">
+                    <SidebarToggleButton
+                      isCollapsed={isSidebarCollapsed}
+                      onToggle={handleSidebarToggle}
+                    />
+                  </div>
+                  <Separator orientation="vertical" />
+                  <div className="flex items-center gap-2 px-3">
+                    <Settings2 className="size-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">设置</span>
+                  </div>
                 </header>
-                <div className="flex min-h-0 flex-1 pl-5">
-                  <SettingsWorkspace />
-                </div>
+                <SettingsWorkspace />
               </div>
             ) : null}
           </main>
@@ -273,33 +277,5 @@ export function AppShell({
         onDecision={sshSessions.decideHostKey}
       />
     </div>
-  );
-}
-
-type SidebarCollapseButtonProps = {
-  isCollapsed: boolean;
-  onToggle: () => void;
-};
-
-function SidebarCollapseButton({ isCollapsed, onToggle }: SidebarCollapseButtonProps) {
-  const label = isCollapsed ? "展开连接侧栏" : "收起连接侧栏";
-  const Icon = isCollapsed ? ChevronRight : ChevronLeft;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          aria-label={label}
-          className="absolute top-1/2 left-0 z-10 h-10 w-5 -translate-y-1/2"
-          onClick={onToggle}
-        >
-          <Icon data-icon="inline-start" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
   );
 }

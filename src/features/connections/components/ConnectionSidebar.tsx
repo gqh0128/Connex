@@ -132,6 +132,7 @@ export const ConnectionSidebar = forwardRef<
   return (
     <>
       <aside
+        id="connection-sidebar"
         aria-hidden={isCollapsed}
         inert={isCollapsed}
         className={cn(
