@@ -150,6 +150,18 @@ impl ConnectionService {
         Ok((profile, credential))
     }
 
+    pub async fn reveal_credential(
+        &self,
+        id: String,
+    ) -> Result<Option<SecretString>, ConnectionServiceError> {
+        let profile = self.repository.get(id).await?;
+        if !profile.has_stored_credential {
+            return Ok(None);
+        }
+
+        self.credentials.get(&profile.id).await.map_err(Into::into)
+    }
+
     async fn restore_credential(
         &self,
         id: &str,

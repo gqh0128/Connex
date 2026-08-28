@@ -53,6 +53,7 @@ pub fn run() {
             commands::connections::create_connection,
             commands::connections::update_connection,
             commands::connections::delete_connection,
+            commands::connections::reveal_connection_credential,
             commands::sessions::start_ssh_session,
             commands::sessions::get_ssh_session,
             commands::sessions::decide_ssh_host_key,

@@ -51,3 +51,15 @@ pub async fn delete_connection(
 ) -> Result<(), CommandError> {
     service.delete(id).await.map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn reveal_connection_credential(
+    id: String,
+    service: State<'_, ConnectionService>,
+) -> Result<Option<String>, CommandError> {
+    service
+        .reveal_credential(id)
+        .await
+        .map(|credential| credential.map(|secret| secret.take()))
+        .map_err(Into::into)
+}
