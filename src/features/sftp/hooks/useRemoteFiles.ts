@@ -11,17 +11,27 @@ type RemoteFilesState = {
   directory: RemoteDirectory | null;
   error: CommandError | null;
   isLoading: boolean;
+  history: string[];
+  historyIndex: number;
+};
+
+type NavigationRequest = {
+  path?: string;
+  mode: "reset" | "push" | "replace" | "history";
+  historyIndex?: number;
 };
 
 export function useRemoteFiles(session: SessionSnapshot | null) {
   const connectedSessionId = session?.state === "connected" ? session.id : null;
   const requestIdRef = useRef(0);
-  const failedPathRef = useRef<string | undefined>(undefined);
+  const failedNavigationRef = useRef<NavigationRequest | null>(null);
   const [remoteFiles, setRemoteFiles] = useState<RemoteFilesState>({
     sessionId: null,
     directory: null,
     error: null,
     isLoading: false,
+    history: [],
+    historyIndex: -1,
   });
   const currentRemoteFiles: RemoteFilesState =
     remoteFiles.sessionId === connectedSessionId
@@ -31,10 +41,12 @@ export function useRemoteFiles(session: SessionSnapshot | null) {
           directory: null,
           error: null,
           isLoading: connectedSessionId !== null,
+          history: [],
+          historyIndex: -1,
         };
 
   const loadDirectory = useCallback(
-    async (path?: string) => {
+    async (navigation: NavigationRequest) => {
       if (!connectedSessionId) {
         return;
       }
@@ -45,28 +57,55 @@ export function useRemoteFiles(session: SessionSnapshot | null) {
         directory: current.sessionId === connectedSessionId ? current.directory : null,
         error: null,
         isLoading: true,
+        history: current.sessionId === connectedSessionId ? current.history : [],
+        historyIndex:
+          current.sessionId === connectedSessionId ? current.historyIndex : -1,
       }));
 
       try {
-        const nextDirectory = await listRemoteDirectory(connectedSessionId, path);
+        const nextDirectory = await listRemoteDirectory(
+          connectedSessionId,
+          navigation.path,
+        );
         if (requestIdRef.current === requestId) {
-          failedPathRef.current = undefined;
-          setRemoteFiles({
-            sessionId: connectedSessionId,
-            directory: nextDirectory,
-            error: null,
-            isLoading: false,
+          failedNavigationRef.current = null;
+          setRemoteFiles((current) => {
+            const navigationState = applySuccessfulNavigation(
+              current.sessionId === connectedSessionId
+                ? current
+                : {
+                    sessionId: connectedSessionId,
+                    directory: null,
+                    error: null,
+                    isLoading: true,
+                    history: [],
+                    historyIndex: -1,
+                  },
+              navigation,
+              nextDirectory.path,
+            );
+
+            return {
+              sessionId: connectedSessionId,
+              directory: nextDirectory,
+              error: null,
+              isLoading: false,
+              ...navigationState,
+            };
           });
         }
       } catch (nextError) {
         if (requestIdRef.current === requestId) {
-          failedPathRef.current = path;
+          failedNavigationRef.current = navigation;
           setRemoteFiles((current) => ({
             sessionId: connectedSessionId,
             directory:
               current.sessionId === connectedSessionId ? current.directory : null,
             error: getCommandError(nextError),
             isLoading: false,
+            history: current.sessionId === connectedSessionId ? current.history : [],
+            historyIndex:
+              current.sessionId === connectedSessionId ? current.historyIndex : -1,
           }));
         }
       }
@@ -76,10 +115,10 @@ export function useRemoteFiles(session: SessionSnapshot | null) {
 
   useEffect(() => {
     requestIdRef.current += 1;
-    failedPathRef.current = undefined;
+    failedNavigationRef.current = null;
 
     if (connectedSessionId) {
-      void loadDirectory();
+      void loadDirectory({ mode: "reset" });
     }
 
     return () => {
@@ -88,18 +127,42 @@ export function useRemoteFiles(session: SessionSnapshot | null) {
   }, [connectedSessionId, loadDirectory]);
 
   const refresh = useCallback(() => {
-    void loadDirectory(currentRemoteFiles.directory?.path);
+    void loadDirectory({
+      path: currentRemoteFiles.directory?.path,
+      mode: "replace",
+    });
   }, [currentRemoteFiles.directory?.path, loadDirectory]);
 
   const openDirectory = useCallback(
     (path: string) => {
-      void loadDirectory(path);
+      void loadDirectory({ path, mode: "push" });
     },
     [loadDirectory],
   );
 
+  const goBack = useCallback(() => {
+    const historyIndex = currentRemoteFiles.historyIndex - 1;
+    const path = currentRemoteFiles.history[historyIndex];
+    if (path) {
+      void loadDirectory({ path, mode: "history", historyIndex });
+    }
+  }, [currentRemoteFiles.history, currentRemoteFiles.historyIndex, loadDirectory]);
+
+  const goForward = useCallback(() => {
+    const historyIndex = currentRemoteFiles.historyIndex + 1;
+    const path = currentRemoteFiles.history[historyIndex];
+    if (path) {
+      void loadDirectory({ path, mode: "history", historyIndex });
+    }
+  }, [currentRemoteFiles.history, currentRemoteFiles.historyIndex, loadDirectory]);
+
   const retry = useCallback(() => {
-    void loadDirectory(failedPathRef.current ?? currentRemoteFiles.directory?.path);
+    void loadDirectory(
+      failedNavigationRef.current ?? {
+        path: currentRemoteFiles.directory?.path,
+        mode: "replace",
+      },
+    );
   }, [currentRemoteFiles.directory?.path, loadDirectory]);
 
   return {
@@ -107,6 +170,12 @@ export function useRemoteFiles(session: SessionSnapshot | null) {
     error: currentRemoteFiles.error,
     isLoading: currentRemoteFiles.isLoading,
     isConnected: connectedSessionId !== null,
+    canGoBack: currentRemoteFiles.historyIndex > 0,
+    canGoForward:
+      currentRemoteFiles.historyIndex >= 0 &&
+      currentRemoteFiles.historyIndex < currentRemoteFiles.history.length - 1,
+    goBack,
+    goForward,
     openDirectory,
     refresh,
     retry,
@@ -114,3 +183,42 @@ export function useRemoteFiles(session: SessionSnapshot | null) {
 }
 
 export type RemoteFilesController = ReturnType<typeof useRemoteFiles>;
+
+function applySuccessfulNavigation(
+  current: RemoteFilesState,
+  navigation: NavigationRequest,
+  resolvedPath: string,
+) {
+  switch (navigation.mode) {
+    case "reset":
+      return { history: [resolvedPath], historyIndex: 0 };
+    case "replace": {
+      if (current.historyIndex < 0) {
+        return { history: [resolvedPath], historyIndex: 0 };
+      }
+      const history = [...current.history];
+      history[current.historyIndex] = resolvedPath;
+      return { history, historyIndex: current.historyIndex };
+    }
+    case "history": {
+      const historyIndex = navigation.historyIndex ?? current.historyIndex;
+      if (historyIndex < 0 || historyIndex >= current.history.length) {
+        return { history: [resolvedPath], historyIndex: 0 };
+      }
+      const history = [...current.history];
+      history[historyIndex] = resolvedPath;
+      return { history, historyIndex };
+    }
+    case "push": {
+      if (current.history[current.historyIndex] === resolvedPath) {
+        return {
+          history: current.history,
+          historyIndex: current.historyIndex,
+        };
+      }
+      const history = current.history.slice(0, current.historyIndex + 1);
+      history.push(resolvedPath);
+      return { history, historyIndex: history.length - 1 };
+    }
+  }
+}

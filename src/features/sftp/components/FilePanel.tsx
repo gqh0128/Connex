@@ -1,4 +1,6 @@
 import {
+  ArrowLeft,
+  ArrowRight,
   CircleAlert,
   ChevronRight,
   Download,
@@ -44,11 +46,7 @@ export function FilePanel({ session, browser, className, onClose }: FilePanelPro
 
   return (
     <aside className={cn("flex min-h-0 flex-col border-l bg-surface", className)}>
-      <div className="flex h-11 shrink-0 items-center justify-between border-b px-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-medium">
-          <Folder className="size-3.5 shrink-0 text-primary" />
-          <span className="truncate">远程文件</span>
-        </div>
+      <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
         <div className="flex items-center gap-0.5">
           <PanelButton label="上传文件" icon={Upload} disabled />
           <PanelButton label="下载文件" icon={Download} disabled />
@@ -71,6 +69,10 @@ export function FilePanel({ session, browser, className, onClose }: FilePanelPro
         path={directory?.path ?? null}
         isConnected={isConnected}
         isLoading={isLoading}
+        canGoBack={browser.canGoBack}
+        canGoForward={browser.canGoForward}
+        onGoBack={browser.goBack}
+        onGoForward={browser.goForward}
         onNavigate={browser.openDirectory}
       />
 
@@ -206,47 +208,81 @@ type RemotePathProps = {
   path: string | null;
   isConnected: boolean;
   isLoading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onGoBack: () => void;
+  onGoForward: () => void;
   onNavigate: (path: string) => void;
 };
 
-function RemotePath({ path, isConnected, isLoading, onNavigate }: RemotePathProps) {
+function RemotePath({
+  path,
+  isConnected,
+  isLoading,
+  canGoBack,
+  canGoForward,
+  onGoBack,
+  onGoForward,
+  onNavigate,
+}: RemotePathProps) {
   const breadcrumbs = path ? getPathBreadcrumbs(path) : [];
 
   return (
     <nav
       aria-label="远程目录路径"
-      className="flex h-9 shrink-0 items-center overflow-hidden border-b px-3 text-[11px] text-muted-foreground"
+      className="flex h-9 shrink-0 items-center overflow-hidden border-b px-1 text-[11px] text-muted-foreground"
     >
-      {breadcrumbs.length > 0 ? (
-        breadcrumbs.map((breadcrumb, index) => {
-          const isCurrent = index === breadcrumbs.length - 1;
+      <div className="flex shrink-0 items-center gap-0.5">
+        <PanelButton
+          label="后退"
+          icon={ArrowLeft}
+          disabled={!canGoBack || isLoading}
+          onClick={onGoBack}
+        />
+        <PanelButton
+          label="前进"
+          icon={ArrowRight}
+          disabled={!canGoForward || isLoading}
+          onClick={onGoForward}
+        />
+      </div>
 
-          return (
-            <div
-              key={`${breadcrumb.path}-${index}`}
-              className="flex min-w-0 items-center"
-            >
-              {index > 0 ? <ChevronRight className="mx-1 size-3 shrink-0" /> : null}
-              <button
-                type="button"
-                className={cn(
-                  "truncate rounded-sm transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                  isCurrent && "text-foreground",
-                )}
-                aria-current={isCurrent ? "page" : undefined}
-                disabled={isCurrent || isLoading}
-                onClick={() => onNavigate(breadcrumb.path)}
+      <div className="flex min-w-0 flex-1 items-center overflow-hidden px-2">
+        {breadcrumbs.length > 0 ? (
+          breadcrumbs.map((breadcrumb, index) => {
+            const isCurrent = index === breadcrumbs.length - 1;
+
+            return (
+              <div
+                key={`${breadcrumb.path}-${index}`}
+                className="flex min-w-0 items-center"
               >
-                {breadcrumb.label}
-              </button>
-            </div>
-          );
-        })
-      ) : (
-        <span className="truncate">
-          {isConnected ? (isLoading ? "正在读取默认目录" : "等待远程目录") : "等待连接"}
-        </span>
-      )}
+                {index > 0 ? <ChevronRight className="mx-1 size-3 shrink-0" /> : null}
+                <button
+                  type="button"
+                  className={cn(
+                    "truncate rounded-sm transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                    isCurrent && "text-foreground",
+                  )}
+                  aria-current={isCurrent ? "page" : undefined}
+                  disabled={isCurrent || isLoading}
+                  onClick={() => onNavigate(breadcrumb.path)}
+                >
+                  {breadcrumb.label}
+                </button>
+              </div>
+            );
+          })
+        ) : (
+          <span className="truncate">
+            {isConnected
+              ? isLoading
+                ? "正在读取默认目录"
+                : "等待远程目录"
+              : "等待连接"}
+          </span>
+        )}
+      </div>
     </nav>
   );
 }
