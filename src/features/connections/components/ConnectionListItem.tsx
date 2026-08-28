@@ -1,4 +1,4 @@
-import { Copy, Pencil, PlugZap, Trash2 } from "lucide-react";
+import { Copy, Pencil, PlugZap, SquareTerminal, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +45,7 @@ export function ConnectionListItem({
             }}
             onDoubleClick={onConnect}
           >
+            <SquareTerminal data-icon="inline-start" />
             <span className="truncate">{connection.name}</span>
           </Button>
           <Tooltip>

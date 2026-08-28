@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Settings2,
+  SquareTerminal,
   X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
@@ -161,6 +162,10 @@ export function SessionTabs({
                       tone={presentation.tone}
                       isBusy={presentation.isBusy}
                       label={presentation.label}
+                    />
+                    <SquareTerminal
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-muted-foreground"
                     />
                     <span className="truncate">{tab.profile.name}</span>
                   </button>
