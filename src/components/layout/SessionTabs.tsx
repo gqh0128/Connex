@@ -158,7 +158,7 @@ export function SessionTabs({
                     role="tab"
                     aria-selected={isActive}
                     aria-controls={`terminal-${tab.localId}`}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     onClick={() => onSelect(tab.localId)}
                   >
                     <SessionStatusIndicator
@@ -255,7 +255,7 @@ export function SessionTabs({
                     role="tab"
                     aria-selected={isActive}
                     aria-controls={tab.controlsId}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     onClick={() => onPageSelect(tab.id)}
                   >
                     <PageIcon

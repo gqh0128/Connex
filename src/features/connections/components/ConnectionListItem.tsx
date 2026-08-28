@@ -44,10 +44,10 @@ export function ConnectionListItem({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="compact"
             aria-label={`打开连接 ${connection.name}`}
             aria-current={isActive ? "true" : undefined}
-            className="min-w-0 flex-1 justify-start gap-1 text-left [&_svg]:size-3.5"
+            className="min-w-0 flex-1 justify-start text-left [&_svg]:size-3.5"
             title="双击连接"
             onClick={(event) => {
               if (event.detail === 0) {
