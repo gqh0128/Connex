@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TransferPopover } from "@/features/transfers/components/TransferPopover";
 import type { FileTransfersController } from "@/features/transfers/hooks/useFileTransfers";
-import type { AppView } from "@/types/navigation";
+import type { AppView, WorkspacePageId } from "@/types/navigation";
 
 type AppTitleBarProps = {
   activeView: AppView;
   activeContextLabel: string | null;
   transfers: FileTransfersController;
-  onViewChange: (view: AppView) => void;
+  onPageOpen: (pageId: WorkspacePageId) => void;
 };
 
 function isMacOS() {
@@ -21,7 +21,7 @@ export function AppTitleBar({
   activeView,
   activeContextLabel,
   transfers,
-  onViewChange,
+  onPageOpen,
 }: AppTitleBarProps) {
   const isMacPlatform = isMacOS();
   const isSettingsOpen = activeView === "settings";
@@ -58,14 +58,14 @@ export function AppTitleBar({
               type="button"
               variant={isSettingsOpen ? "secondary" : "ghost"}
               size="icon"
-              aria-label={isSettingsOpen ? "返回工作区" : "打开设置"}
+              aria-label={isSettingsOpen ? "设置标签页已打开" : "打开设置标签页"}
               aria-pressed={isSettingsOpen}
-              onClick={() => onViewChange(isSettingsOpen ? "workspace" : "settings")}
+              onClick={() => onPageOpen("settings")}
             >
               <Settings data-icon="inline-start" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{isSettingsOpen ? "返回工作区" : "设置"}</TooltipContent>
+          <TooltipContent>{isSettingsOpen ? "设置已打开" : "打开设置"}</TooltipContent>
         </Tooltip>
       </div>
     </header>

@@ -36,7 +36,7 @@ React 不直接访问网络、数据库、凭据或任意本地路径。Rust 是
 前端按功能垂直切分，同时保留少量真正通用的 UI 和基础设施层。
 
 - `app/`：组合应用、注册全局 provider、处理窗口级快捷键。
-- `components/layout/`：侧栏、会话标签、工作区、状态栏等跨功能布局。
+- `components/layout/`：侧栏、统一工作区标签、工作区、状态栏等跨功能布局。
 - `components/ui/`：来自 shadcn/ui 的无业务语义组件。
 - `features/connections/`：连接列表、编辑表单、SSH 配置导入。
 - `features/terminal/`：xterm 实例、输入聚合、输出写入、resize 和快捷键。
@@ -46,9 +46,9 @@ React 不直接访问网络、数据库、凭据或任意本地路径。Rust 是
 
 全局状态库暂不引入。连接与传输状态最终来自 Rust manager；前端先使用局部 state 和 feature hooks。等多个页面确实需要规范化共享数据时，再评估轻量 store。
 
-SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只负责标签和 xterm 实例绑定，Rust 返回的 session ID 才用于后续控制命令。密码和私钥口令仅在发起连接前暂存于 hook 的内存引用中，首次调用 `start_ssh_session` 前立即移除；不得放入可持久化 state、日志或连接配置。
+SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只负责标签和 xterm 实例绑定，Rust 返回的 session ID 才用于后续控制命令。设置等占满中央区域的页面由应用层维护单例页面标签，并与 SSH 标签组合进统一工作区标签栏；页面标签只控制前端可见性，不参与 SSH 生命周期。密码和私钥口令仅在发起连接前暂存于 hook 的内存引用中，首次调用 `start_ssh_session` 前立即移除；不得放入可持久化 state、日志或连接配置。
 
-每个会话标签对应一个长期存活的 xterm 实例。切换标签、打开设置和展开或收起文件面板只改变可见性或面板尺寸，不能卸载仍存在的终端。React 开发模式重复挂载时，会话 hook 必须保证同一标签只启动一次 Rust 会话，并让后挂载的终端重新接管输出处理器。
+每个会话标签对应一个长期存活的 xterm 实例。切换会话或页面标签、打开设置和展开或收起文件面板只改变可见性或面板尺寸，不能卸载仍存在的终端。React 开发模式重复挂载时，会话 hook 必须保证同一标签只启动一次 Rust 会话，并让后挂载的终端重新接管输出处理器。
 
 ## 4. Rust 架构
 
