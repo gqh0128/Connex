@@ -27,6 +27,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { ConnectionProfile, SaveConnectionInput } from "@/types/connections";
 import type { AppView } from "@/types/navigation";
 
 import { ConnectionFormSheet } from "./ConnectionFormSheet";
@@ -46,12 +47,22 @@ export function ConnectionSidebar({
   activeView,
   onViewChange,
 }: ConnectionSidebarProps) {
-  const { connections, isLoading, loadError, create, refreshConnections } =
-    useConnections();
+  const {
+    connections,
+    isLoading,
+    loadError,
+    create,
+    update,
+    remove,
+    refreshConnections,
+  } = useConnections();
   const [searchQuery, setSearchQuery] = useState("");
   const [connectionScope, setConnectionScope] = useState<"recent" | "all">("all");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createFormKey, setCreateFormKey] = useState(0);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingConnection, setEditingConnection] = useState<ConnectionProfile | null>(
+    null,
+  );
+  const [formKey, setFormKey] = useState(0);
   const visibleConnections = useMemo(() => {
     const scopedConnections =
       connectionScope === "recent"
@@ -72,8 +83,23 @@ export function ConnectionSidebar({
   }, [connectionScope, connections, searchQuery]);
 
   const openCreateSheet = () => {
-    setCreateFormKey((current) => current + 1);
-    setIsCreateOpen(true);
+    setEditingConnection(null);
+    setFormKey((current) => current + 1);
+    setIsFormOpen(true);
+  };
+
+  const openEditSheet = (connection: ConnectionProfile) => {
+    setEditingConnection(connection);
+    setFormKey((current) => current + 1);
+    setIsFormOpen(true);
+  };
+
+  const saveConnection = (input: SaveConnectionInput) => {
+    if (editingConnection) {
+      return update(editingConnection.id, input);
+    }
+
+    return create(input);
   };
 
   return (
@@ -182,6 +208,7 @@ export function ConnectionSidebar({
                       key={connection.id}
                       connection={connection}
                       isCollapsed={isCollapsed}
+                      onEdit={() => openEditSheet(connection)}
                     />
                   ))}
                 </div>
@@ -212,10 +239,12 @@ export function ConnectionSidebar({
       </aside>
 
       <ConnectionFormSheet
-        key={createFormKey}
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-        onSubmit={create}
+        key={formKey}
+        open={isFormOpen}
+        connection={editingConnection}
+        onOpenChange={setIsFormOpen}
+        onSubmit={saveConnection}
+        onDelete={editingConnection ? () => remove(editingConnection.id) : undefined}
       />
     </>
   );

@@ -1,5 +1,6 @@
 import { KeyRound, Server } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types/connections";
@@ -7,20 +8,27 @@ import type { ConnectionProfile } from "@/types/connections";
 type ConnectionListItemProps = {
   connection: ConnectionProfile;
   isCollapsed: boolean;
+  onEdit: () => void;
 };
 
 export function ConnectionListItem({
   connection,
   isCollapsed,
+  onEdit,
 }: ConnectionListItemProps) {
   const content = (
-    <div
+    <Button
+      type="button"
+      variant="ghost"
+      size={isCollapsed ? "icon" : "sm"}
+      aria-label={isCollapsed ? `编辑连接 ${connection.name}` : undefined}
+      onClick={onEdit}
       className={cn(
-        "flex min-w-0 items-center rounded-md text-sm text-foreground",
-        isCollapsed ? "size-8 justify-center" : "gap-2 px-2 py-2",
+        "min-w-0",
+        isCollapsed ? null : "h-auto w-full justify-start px-2 py-2 text-left",
       )}
     >
-      <Server className="size-4 shrink-0 text-muted-foreground" />
+      <Server data-icon="inline-start" />
       {isCollapsed ? null : (
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate font-medium">{connection.name}</span>
@@ -30,12 +38,9 @@ export function ConnectionListItem({
         </div>
       )}
       {!isCollapsed && connection.authenticationMethod === "privateKey" ? (
-        <KeyRound
-          className="size-3.5 shrink-0 text-muted-foreground"
-          aria-label="私钥认证"
-        />
+        <KeyRound data-icon="inline-end" aria-label="私钥认证" />
       ) : null}
-    </div>
+    </Button>
   );
 
   if (!isCollapsed) {

@@ -1,5 +1,15 @@
 import { useId, useState, type FormEvent } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -21,12 +31,18 @@ import {
 } from "@/components/ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getCommandError } from "@/lib/tauri/errors";
-import type { AuthenticationMethod, SaveConnectionInput } from "@/types/connections";
+import type {
+  AuthenticationMethod,
+  ConnectionProfile,
+  SaveConnectionInput,
+} from "@/types/connections";
 
 type ConnectionFormSheetProps = {
   open: boolean;
+  connection: ConnectionProfile | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: SaveConnectionInput) => Promise<unknown>;
+  onDelete?: () => Promise<void>;
 };
 
 type ConnectionFormState = Omit<SaveConnectionInput, "port" | "privateKeyPath"> & {
@@ -36,15 +52,6 @@ type ConnectionFormState = Omit<SaveConnectionInput, "port" | "privateKeyPath"> 
 
 type FormField = keyof ConnectionFormState | "form";
 type FormErrors = Partial<Record<FormField, string>>;
-
-const DEFAULT_FORM: ConnectionFormState = {
-  name: "",
-  host: "",
-  port: "22",
-  username: "",
-  authenticationMethod: "password",
-  privateKeyPath: "",
-};
 
 const AUTHENTICATION_OPTIONS: Array<{
   value: AuthenticationMethod;
@@ -57,13 +64,21 @@ const AUTHENTICATION_OPTIONS: Array<{
 
 export function ConnectionFormSheet({
   open,
+  connection,
   onOpenChange,
   onSubmit,
+  onDelete,
 }: ConnectionFormSheetProps) {
   const formId = useId();
-  const [form, setForm] = useState(DEFAULT_FORM);
+  const [form, setForm] = useState<ConnectionFormState>(() =>
+    getInitialForm(connection),
+  );
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const isEditing = connection !== null;
 
   const setField = <Field extends keyof ConnectionFormState>(
     field: Field,
@@ -107,13 +122,34 @@ export function ConnectionFormSheet({
     }
   };
 
+  const handleDelete = async () => {
+    if (!onDelete) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await onDelete();
+      setIsDeleteOpen(false);
+      onOpenChange(false);
+    } catch (error) {
+      setDeleteError(getCommandError(error).message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[min(30rem,92vw)] gap-0 sm:max-w-none">
         <SheetHeader className="border-b">
-          <SheetTitle>新建 SSH 连接</SheetTitle>
+          <SheetTitle>{isEditing ? "编辑 SSH 连接" : "新建 SSH 连接"}</SheetTitle>
           <SheetDescription>
-            保存连接地址和认证方式。密码会在连接时单独获取，不会写入数据库。
+            {isEditing
+              ? "修改连接地址和认证方式。保存后不会影响已打开的会话。"
+              : "保存连接地址和认证方式。密码会在连接时单独获取，不会写入数据库。"}
           </SheetDescription>
         </SheetHeader>
 
@@ -245,7 +281,18 @@ export function ConnectionFormSheet({
             </FieldGroup>
           </div>
 
-          <SheetFooter className="border-t sm:flex-row sm:justify-end">
+          <SheetFooter className="border-t sm:flex-row sm:items-center sm:justify-end">
+            {isEditing && onDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive sm:mr-auto"
+                disabled={isSaving}
+                onClick={() => setIsDeleteOpen(true)}
+              >
+                删除连接
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -255,13 +302,64 @@ export function ConnectionFormSheet({
               取消
             </Button>
             <Button type="submit" disabled={isSaving}>
-              {isSaving ? "保存中…" : "保存连接"}
+              {isSaving ? "保存中…" : isEditing ? "保存修改" : "保存连接"}
             </Button>
           </SheetFooter>
         </form>
       </SheetContent>
+
+      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除“{connection?.name}”？</AlertDialogTitle>
+            <AlertDialogDescription>
+              连接地址和认证配置将从本机移除。此操作不会删除服务器上的任何数据。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {deleteError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDelete();
+              }}
+            >
+              {isDeleting ? "删除中…" : "确认删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
+}
+
+function getInitialForm(connection: ConnectionProfile | null): ConnectionFormState {
+  if (!connection) {
+    return {
+      name: "",
+      host: "",
+      port: "22",
+      username: "",
+      authenticationMethod: "password",
+      privateKeyPath: "",
+    };
+  }
+
+  return {
+    name: connection.name,
+    host: connection.host,
+    port: String(connection.port),
+    username: connection.username,
+    authenticationMethod: connection.authenticationMethod,
+    privateKeyPath: connection.privateKeyPath ?? "",
+  };
 }
 
 function validateForm(form: ConnectionFormState): FormErrors {

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { createConnection, listConnections } from "@/lib/tauri/connections";
+import {
+  createConnection,
+  deleteConnection,
+  listConnections,
+  updateConnection,
+} from "@/lib/tauri/connections";
 import { getCommandError } from "@/lib/tauri/errors";
 import type { ConnectionProfile, SaveConnectionInput } from "@/types/connections";
 import type { CommandError } from "@/types/ipc";
@@ -54,11 +59,27 @@ export function useConnections() {
     return created;
   }, []);
 
+  const update = useCallback(async (id: string, input: SaveConnectionInput) => {
+    const updated = await updateConnection(id, input);
+    setConnections((current) => [
+      updated,
+      ...current.filter((connection) => connection.id !== id),
+    ]);
+    return updated;
+  }, []);
+
+  const remove = useCallback(async (id: string) => {
+    await deleteConnection(id);
+    setConnections((current) => current.filter((connection) => connection.id !== id));
+  }, []);
+
   return {
     connections,
     isLoading,
     loadError,
     create,
+    update,
+    remove,
     refreshConnections,
   };
 }
