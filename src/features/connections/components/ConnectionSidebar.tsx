@@ -22,16 +22,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile, SaveConnectionInput } from "@/types/connections";
-import type { SessionCredentials } from "@/types/sessions";
 
-import { ConnectionCredentialsDialog } from "./ConnectionCredentialsDialog";
-import { ConnectionFormSheet } from "./ConnectionFormSheet";
+import { ConnectionFormDialog } from "./ConnectionFormDialog";
 import { ConnectionListItem } from "./ConnectionListItem";
 import { useConnections } from "../hooks/useConnections";
 
 type ConnectionSidebarProps = {
   isCollapsed: boolean;
-  onConnect: (connection: ConnectionProfile, credentials: SessionCredentials) => void;
+  onConnect: (connection: ConnectionProfile) => void;
 };
 
 export type ConnectionSidebarHandle = {
@@ -49,6 +47,7 @@ export const ConnectionSidebar = forwardRef<
     create,
     update,
     remove,
+    revealCredential,
     refreshConnections,
   } = useConnections();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -58,8 +57,6 @@ export const ConnectionSidebar = forwardRef<
   const [editingConnection, setEditingConnection] = useState<ConnectionProfile | null>(
     null,
   );
-  const [credentialConnection, setCredentialConnection] =
-    useState<ConnectionProfile | null>(null);
   const [formKey, setFormKey] = useState(0);
   const visibleConnections = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -88,28 +85,19 @@ export const ConnectionSidebar = forwardRef<
     return () => window.cancelAnimationFrame(animationFrame);
   }, [isCollapsed, isSearchOpen]);
 
-  const openCreateSheet = () => {
+  const openCreateDialog = () => {
     setEditingConnection(null);
     setFormKey((current) => current + 1);
     setIsFormOpen(true);
   };
 
-  const openEditSheet = (connection: ConnectionProfile) => {
+  const openEditDialog = (connection: ConnectionProfile) => {
     setEditingConnection(connection);
     setFormKey((current) => current + 1);
     setIsFormOpen(true);
   };
 
-  useImperativeHandle(ref, () => ({ openCreateForm: openCreateSheet }));
-
-  const startConnection = (connection: ConnectionProfile) => {
-    if (connection.authenticationMethod === "agent") {
-      onConnect(connection, { password: null, privateKeyPassphrase: null });
-      return;
-    }
-
-    setCredentialConnection(connection);
-  };
+  useImperativeHandle(ref, () => ({ openCreateForm: openCreateDialog }));
 
   const saveConnection = (input: SaveConnectionInput) => {
     if (editingConnection) {
@@ -151,7 +139,7 @@ export const ConnectionSidebar = forwardRef<
             >
               <Search data-icon="inline-start" />
             </IconAction>
-            <IconAction label="新建 SSH 连接" onClick={openCreateSheet}>
+            <IconAction label="新建 SSH 连接" onClick={openCreateDialog}>
               <Plus data-icon="inline-start" />
             </IconAction>
           </div>
@@ -201,8 +189,8 @@ export const ConnectionSidebar = forwardRef<
                   <ConnectionListItem
                     key={connection.id}
                     connection={connection}
-                    onConnect={() => startConnection(connection)}
-                    onEdit={() => openEditSheet(connection)}
+                    onConnect={() => onConnect(connection)}
+                    onEdit={() => openEditDialog(connection)}
                   />
                 ))}
               </div>
@@ -225,29 +213,16 @@ export const ConnectionSidebar = forwardRef<
         </ScrollArea>
       </aside>
 
-      <ConnectionFormSheet
+      <ConnectionFormDialog
         key={formKey}
         open={isFormOpen}
         connection={editingConnection}
         onOpenChange={setIsFormOpen}
         onSubmit={saveConnection}
+        onRevealCredential={
+          editingConnection ? () => revealCredential(editingConnection.id) : undefined
+        }
         onDelete={editingConnection ? () => remove(editingConnection.id) : undefined}
-      />
-
-      <ConnectionCredentialsDialog
-        key={credentialConnection?.id ?? "credentials"}
-        connection={credentialConnection}
-        open={Boolean(credentialConnection)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCredentialConnection(null);
-          }
-        }}
-        onConnect={(credentials) => {
-          if (credentialConnection) {
-            onConnect(credentialConnection, credentials);
-          }
-        }}
       />
     </>
   );

@@ -9,7 +9,7 @@ import {
   startSshSession,
 } from "@/lib/tauri/sessions";
 import type { ConnectionProfile } from "@/types/connections";
-import type { HostKeyDecision, SessionCredentials } from "@/types/sessions";
+import type { HostKeyDecision } from "@/types/sessions";
 
 import type {
   SessionOutputHandler,
@@ -23,7 +23,7 @@ export function useSshSessions() {
   const [tabs, setTabs] = useState<SshSessionTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const tabsRef = useRef(tabs);
-  const pendingCredentialsRef = useRef(new Map<string, SessionCredentials>());
+  const attemptedIdsRef = useRef(new Set<string>());
   const startingIdsRef = useRef(new Set<string>());
   const closingIdsRef = useRef(new Set<string>());
   const closingBackendIdsRef = useRef(new Set<string>());
@@ -58,7 +58,7 @@ export function useSshSessions() {
   }, []);
 
   const openSession = useCallback(
-    (profile: ConnectionProfile, credentials: SessionCredentials) => {
+    (profile: ConnectionProfile) => {
       const existingTab = tabsRef.current.find(
         (tab) =>
           tab.profile.id === profile.id &&
@@ -81,7 +81,6 @@ export function useSshSessions() {
         isStarting: false,
       };
 
-      pendingCredentialsRef.current.set(localId, credentials);
       updateTabs((current) => [...current, nextTab]);
       setActiveTabId(localId);
       return localId;
@@ -104,19 +103,18 @@ export function useSshSessions() {
 
   const startSession = useCallback(
     async (localId: string, dimensions: TerminalDimensions) => {
-      const credentials = pendingCredentialsRef.current.get(localId);
       const tab = tabsRef.current.find((candidate) => candidate.localId === localId);
 
       if (
-        !credentials ||
         !tab ||
+        attemptedIdsRef.current.has(localId) ||
         startingIdsRef.current.has(localId) ||
         closingIdsRef.current.has(localId)
       ) {
         return;
       }
 
-      pendingCredentialsRef.current.delete(localId);
+      attemptedIdsRef.current.add(localId);
       startingIdsRef.current.add(localId);
       updateTab(localId, (current) => ({
         ...current,
@@ -128,7 +126,6 @@ export function useSshSessions() {
         const snapshot = await startSshSession(
           {
             connectionId: tab.profile.id,
-            ...credentials,
             ...dimensions,
           },
           {
@@ -189,7 +186,7 @@ export function useSshSessions() {
       const closingTab = currentTabs[closingIndex];
       const nextTabs = currentTabs.filter((tab) => tab.localId !== localId);
       closingIdsRef.current.add(localId);
-      pendingCredentialsRef.current.delete(localId);
+      attemptedIdsRef.current.delete(localId);
       outputHandlersRef.current.delete(localId);
       updateTabs(() => nextTabs);
       setActiveTabId((currentActiveId) => {

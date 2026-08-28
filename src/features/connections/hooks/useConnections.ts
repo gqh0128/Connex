@@ -4,6 +4,7 @@ import {
   createConnection,
   deleteConnection,
   listConnections,
+  revealConnectionCredential,
   updateConnection,
 } from "@/lib/tauri/connections";
 import { getCommandError } from "@/lib/tauri/errors";
@@ -73,6 +74,10 @@ export function useConnections() {
     setConnections((current) => current.filter((connection) => connection.id !== id));
   }, []);
 
+  const revealCredential = useCallback((id: string) => {
+    return revealConnectionCredential(id);
+  }, []);
+
   return {
     connections,
     isLoading,
@@ -80,6 +85,7 @@ export function useConnections() {
     create,
     update,
     remove,
+    revealCredential,
     refreshConnections,
   };
 }

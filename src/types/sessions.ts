@@ -44,18 +44,11 @@ export type SessionSnapshot = {
 
 export type StartSshSessionInput = {
   connectionId: string;
-  password: string | null;
-  privateKeyPassphrase: string | null;
   columns: number;
   rows: number;
   pixelWidth: number;
   pixelHeight: number;
 };
-
-export type SessionCredentials = Pick<
-  StartSshSessionInput,
-  "password" | "privateKeyPassphrase"
->;
 
 export type ResizeSshSessionInput = Pick<
   StartSshSessionInput,

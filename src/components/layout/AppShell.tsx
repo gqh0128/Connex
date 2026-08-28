@@ -153,8 +153,8 @@ export function AppShell({
           <ConnectionSidebar
             ref={connectionSidebarRef}
             isCollapsed={isSidebarCollapsed}
-            onConnect={(connection, credentials) => {
-              sshSessions.openSession(connection, credentials);
+            onConnect={(connection) => {
+              sshSessions.openSession(connection);
               onViewChange("workspace");
             }}
           />

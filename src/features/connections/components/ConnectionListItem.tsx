@@ -21,9 +21,15 @@ export function ConnectionListItem({
         type="button"
         variant="ghost"
         size="sm"
-        aria-label={`连接 ${connection.name}`}
+        aria-label={`打开连接 ${connection.name}`}
         className="min-w-0 flex-1 justify-start text-left"
-        onClick={onConnect}
+        title="双击连接"
+        onClick={(event) => {
+          if (event.detail === 0) {
+            onConnect();
+          }
+        }}
+        onDoubleClick={onConnect}
       >
         <span className="truncate">{connection.name}</span>
       </Button>

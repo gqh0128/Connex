@@ -1,6 +1,6 @@
 export type AuthenticationMethod = "password" | "privateKey" | "agent";
 
-export type SaveConnectionInput = {
+export type ConnectionMetadataInput = {
   name: string;
   host: string;
   port: number;
@@ -9,8 +9,14 @@ export type SaveConnectionInput = {
   privateKeyPath: string | null;
 };
 
-export type ConnectionProfile = SaveConnectionInput & {
+export type SaveConnectionInput = ConnectionMetadataInput & {
+  password: string | null;
+  privateKeyPassphrase: string | null;
+};
+
+export type ConnectionProfile = ConnectionMetadataInput & {
   id: string;
+  hasStoredCredential: boolean;
   createdAt: string;
   updatedAt: string;
   lastConnectedAt: string | null;
