@@ -21,11 +21,10 @@ export function SidebarToggleButton({
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size="icon-xs"
           aria-label={label}
           aria-controls="connection-sidebar"
           aria-expanded={!isCollapsed}
-          className="w-6"
           onClick={onToggle}
         >
           <Icon data-icon="inline-start" />

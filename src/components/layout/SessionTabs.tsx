@@ -110,7 +110,7 @@ export function SessionTabs({
 
   return (
     <header
-      className="flex h-8 shrink-0 items-stretch border-b bg-surface"
+      className="flex h-7 shrink-0 items-stretch border-b bg-surface"
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className="flex shrink-0 items-center gap-0.5 px-1">
@@ -123,7 +123,7 @@ export function SessionTabs({
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
+              size="icon-xs"
               aria-label="新建连接标签页"
               onClick={onNewConnection}
             >
@@ -149,7 +149,7 @@ export function SessionTabs({
               <ContextMenuTrigger asChild>
                 <div
                   className={cn(
-                    "group relative flex w-40 shrink-0 items-stretch border-r",
+                    "group relative flex w-36 shrink-0 items-stretch border-r",
                     isActive ? "bg-workspace" : "bg-surface hover:bg-muted/60",
                   )}
                 >
@@ -180,7 +180,7 @@ export function SessionTabs({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon-xs"
                         aria-label={`关闭 ${tab.profile.name} 标签页`}
                         className={cn(
                           "absolute top-0.5 right-1",
@@ -246,7 +246,7 @@ export function SessionTabs({
               <ContextMenuTrigger asChild>
                 <div
                   className={cn(
-                    "group relative flex w-40 shrink-0 items-stretch border-r",
+                    "group relative flex w-36 shrink-0 items-stretch border-r",
                     isActive ? "bg-workspace" : "bg-surface hover:bg-muted/60",
                   )}
                 >
@@ -270,7 +270,7 @@ export function SessionTabs({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon-xs"
                         aria-label={`关闭 ${tab.label} 标签页`}
                         className={cn(
                           "absolute top-0.5 right-1",
@@ -310,7 +310,7 @@ export function SessionTabs({
             <Button
               type="button"
               variant={isFilePanelOpen ? "secondary" : "ghost"}
-              size="icon-sm"
+              size="icon-xs"
               aria-label={isFilePanelOpen ? "关闭远程文件面板" : "打开远程文件面板"}
               aria-pressed={isFilePanelOpen}
               disabled={!isFilePanelEnabled}
