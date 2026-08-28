@@ -72,7 +72,11 @@ impl ConnectionService {
             CredentialMutation::Set(_) => true,
             CredentialMutation::Delete => false,
         };
-        let should_mutate_credential = !matches!(&mutation, CredentialMutation::Keep);
+        let should_mutate_credential = match &mutation {
+            CredentialMutation::Keep => false,
+            CredentialMutation::Set(_) => true,
+            CredentialMutation::Delete => current.has_stored_credential,
+        };
         let previous_credential = if should_mutate_credential && current.has_stored_credential {
             self.credentials.get(&id).await?
         } else {
@@ -82,7 +86,10 @@ impl ConnectionService {
         match mutation {
             CredentialMutation::Keep => {}
             CredentialMutation::Set(secret) => self.credentials.set(&id, secret).await?,
-            CredentialMutation::Delete => self.credentials.delete(&id).await?,
+            CredentialMutation::Delete if current.has_stored_credential => {
+                self.credentials.delete(&id).await?
+            }
+            CredentialMutation::Delete => {}
         }
 
         match self
