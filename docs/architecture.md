@@ -22,7 +22,7 @@ macOS 是首个完整验证平台；Windows 和 Linux 从路径、系统凭据�
 │ Tauri commands → services → session / transfer managers │
 │                            ├── russh + russh-sftp        │
 │                            ├── SQLite                    │
-│                            ├── system credentials        │
+│                            ├── local master key          │
 │                            └── local filesystem          │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -150,13 +150,17 @@ local file ↔ Rust buffered I/O ↔ SFTP channel ↔ remote file
 - known host 元数据
 - 后续需要时的传输历史
 
-数据库从第一张表开始使用版本化 migration，不在启动代码里散落 `CREATE TABLE`。密码和私钥口令不进入数据库；连接 UUID 作为稳定引用，SQLite 只记录该连接是否应存在安全凭据，由 Rust 侧 `CredentialStore` 通过 `keyring` 写入 macOS Keychain、Windows Credential Manager 或 Linux Secret Service。Linux 没有可用 secret service 时保存操作必须明确失败，不能退化为明文文件；未保存口令的私钥连接和 Agent 连接不访问系统凭据管理器。
+数据库从第一张表开始使用版本化 migration，不在启动代码里散落 `CREATE TABLE`。密码和私钥口令以连接 UUID 作为 AEAD 附加认证数据，经随机 nonce 的 AES-256-GCM 加密后写入独立 `connection_credentials` 表；SQLite 永远不保存秘密明文。本机只生成一把随机 256 位主密钥，由 Rust 侧 `CredentialStore` 通过 `keyring` 写入 macOS Keychain、Windows Credential Manager 或 Linux Secret Service，并在当前进程首次成功读取后缓存于可清零内存。Linux 没有可用 secret service 时保存操作必须明确失败，不能退化为硬编码密钥或明文文件。
 
-创建连接时，密码认证必须同时保存密码；私钥认证保存私钥路径，并按需保存私钥口令。编辑连接时凭据字段留空表示保留原值，切换认证方式时清理不再适用的秘密；删除连接时同步移除系统凭据。SQLite 与系统凭据管理器无法组成同一事务，因此服务层先更新凭据、再更新元数据，并在元数据失败时尽力恢复原凭据。
+创建连接时，密码认证必须同时保存密码；私钥认证保存私钥路径，并按需保存私钥口令。编辑连接时凭据字段留空表示保留原值，切换认证方式时清理不再适用的秘密；删除连接时由服务层显式移除密文。连接元数据和密文虽位于同一数据库，但当前通过独立异步仓库操作，服务层继续采用“先写凭据、再写元数据、失败时恢复”的补偿顺序，不能依赖跨调用事务。旧版本按连接 UUID 保存到系统凭据管理器的条目采用按需迁移：第一次连接、显示或导出时读取旧秘密、写入 SQLite 密文，成功后删除旧条目，避免应用启动时批量触发系统授权。
 
-启动 SSH 会话时，前端只提交连接 ID 和终端尺寸。Rust 侧读取 SQLite 配置，再按连接 UUID 从系统凭据管理器取出秘密并直接构造认证请求；普通连接流程中密码和私钥口令不返回 React，也不进入会话 IPC 输入。没有已保存密码的旧连接会返回可操作错误，用户编辑连接补录后即可恢复双击直连。
+启动 SSH 会话时，前端只提交连接 ID 和终端尺寸。Rust 侧读取 SQLite 配置和加密凭据，使用进程内本机主密钥解密后直接构造认证请求；普通连接流程中密码和私钥口令不返回 React，也不进入会话 IPC 输入。没有已保存密码的旧连接会返回可操作错误，用户编辑连接补录后即可恢复双击直连。
 
-编辑连接提供唯一例外：用户悬停或用键盘聚焦密码框内的显示按钮时，前端通过专用 `reveal_connection_credential` command 按需读取当前连接的秘密。列表加载和表单打开不能预取；指针离开、按钮失焦、认证方式变化或表单关闭时立即清除前端临时值。该能力只改善本机可见性，不改变凭据的系统安全存储位置。
+编辑连接提供唯一例外：用户悬停或用键盘聚焦密码框内的显示按钮时，前端通过专用 `reveal_connection_credential` command 按需读取当前连接的秘密。列表加载和表单打开不能预取；指针离开、按钮失焦、认证方式变化或表单关闭时立即清除前端临时值。该能力只改善本机可见性，不改变凭据的加密存储位置。
+
+连接迁移使用版本化 `.connex-backup` 容器。所有导出都必须设置导出密码；导出表单默认包含密码和私钥口令，用户可以主动切换为仅连接元数据。Rust 使用每个备份独立的随机 salt 和 Argon2id 参数从导出密码派生 256 位临时密钥，再用 AES-256-GCM 加密并认证完整 payload。备份不包含本机主密钥；目标设备输入导出密码解密后，为每条导入凭据使用目标设备主密钥重新加密。错误密码、损坏文件和被篡改文件统一拒绝，不能输出部分明文结果。
+
+完整备份可由用户额外选择包含私钥文件，默认关闭。若开启，私钥内容只能存在于加密 payload 中；导入后写入目标设备应用数据目录下的受限路径，并更新连接配置。known host 信任记录默认不导出，新设备首次连接重新确认主机指纹。
 
 持久化使用 Rust 侧共享的 `Database` 基础设施和 `tokio-rusqlite` 独立数据库线程，SQLite 以 bundled 模式随应用构建，避免平台系统库版本差异。数据库文件位于 Tauri 应用数据目录；连接配置、known host 等仓库共享同一条连接与按 `user_version` 顺序执行的 migration。前端只通过类型化 commands 访问持久化数据，不能直接执行 SQL。
 

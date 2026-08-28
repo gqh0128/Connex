@@ -28,7 +28,7 @@ pub fn run() {
             ))?;
             let connection_service = ConnectionService::new(
                 ConnectionRepository::new(database.clone()),
-                CredentialStore::new(),
+                CredentialStore::new(database.clone()),
             );
             let session_manager = SshSessionManager::new(SshConnector::new(
                 KnownHostRepository::new(database.clone()),
