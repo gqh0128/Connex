@@ -110,6 +110,21 @@ src-tauri/src/
 - Tailwind 类优先，主题值必须来自 `src/styles/globals.css` 的语义 token，避免散落硬编码颜色。
 - shadcn/ui 组件是仓库自有代码，可以按产品需要修改，但通用原语与业务组件必须分开。
 
+## shadcn/ui Skill 工作流
+
+仓库内置 `.agents/skills/shadcn/SKILL.md`，它是新增、查询、调试、组合或更新 shadcn/ui 组件时的权威操作说明。只要任务涉及 `components.json`、`components/ui`、shadcn registry、preset 或现有 shadcn 组件，就必须先使用该 skill。
+
+- 本项目使用 pnpm，所有 shadcn CLI 命令统一运行 `pnpm dlx shadcn@latest ...`，不混用 npm 或 bun。
+- 开始组件工作时先运行 `pnpm dlx shadcn@latest info`，确认当前 style、base、icon library、Tailwind 版本、aliases 和已安装组件。
+- 优先复用现有组件；缺少组件时先使用 `search` 查找 registry，再运行 `docs <component>` 获取当前 API 和示例，不能凭记忆猜测组件接口。
+- 安装前确认组件尚未存在。添加 registry 组件后必须阅读生成文件，检查 imports、组合结构、图标库和可访问性。
+- 用户未指定 registry 时不要擅自选择；先确认要使用的 registry。
+- 更新已有组件时先使用 `add <component> --dry-run` 和 `--diff` 检查影响，保留本地定制；没有用户明确许可不得使用 `--overwrite`。
+- 优先使用组件现有 variants 和语义颜色。`className` 主要承担布局，不覆盖组件颜色与字体；条件类使用 `cn()`。
+- 表单、Empty、Alert、Badge、Separator、Skeleton、Dialog、Sheet 等场景优先采用对应 shadcn 组件，不重复手写等价结构。
+- 图标按钮遵循 skill 中的 `data-icon`、可访问名称和尺寸规则；overlay、form、group 等组件遵循完整组合结构。
+- preset 变更属于全局视觉变更，执行前必须让用户选择 overwrite、partial、merge 或 skip。
+
 ## Rust 风格
 
 - 遵循 `rustfmt` 和 Clippy，公共边界使用明确类型。
