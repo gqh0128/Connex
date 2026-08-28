@@ -208,7 +208,7 @@ export function ConnectionFormDialog({
               <DialogDescription>
                 {isEditing
                   ? "更新连接信息；凭据留空时保留已保存内容。"
-                  : "连接信息保存在本机，密码或口令进入系统安全凭据管理器。"}
+                  : "连接信息保存在本机；密码或口令经加密后存储，解密密钥由系统安全存储保护。"}
               </DialogDescription>
             </DialogHeader>
 
@@ -325,8 +325,8 @@ export function ConnectionFormDialog({
                     />
                     <FieldDescription>
                       {canKeepCredential
-                        ? "留空保留原密码；输入新值会覆盖系统凭据。"
-                        : "密码将保存到系统安全凭据管理器，不会写入 SQLite。"}
+                        ? "留空保留原密码；输入新值会替换已保存密码。"
+                        : "密码会加密后保存在本机。"}
                     </FieldDescription>
                     <FieldError>{errors.password}</FieldError>
                   </Field>
@@ -383,8 +383,8 @@ export function ConnectionFormDialog({
                       />
                       <FieldDescription>
                         {canKeepCredential
-                          ? "留空保留原口令；输入新值会覆盖系统凭据。"
-                          : "仅加密私钥需要填写，口令会保存到系统安全凭据管理器。"}
+                          ? "留空保留原口令；输入新值会替换已保存口令。"
+                          : "仅加密私钥需要填写；口令会加密后保存在本机。"}
                       </FieldDescription>
                       <FieldError>{errors.privateKeyPassphrase}</FieldError>
                     </Field>
