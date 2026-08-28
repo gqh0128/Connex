@@ -6,8 +6,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TransferPopover } from "@/features/transfers/components/TransferPopover";
 import type { AppView } from "@/types/navigation";
 
-import { WindowControls } from "./WindowControls";
-
 type AppTitleBarProps = {
   activeView: AppView;
   onViewChange: (view: AppView) => void;
@@ -25,13 +23,13 @@ export function AppTitleBar({ activeView, onViewChange }: AppTitleBarProps) {
 
   return (
     <header
-      data-tauri-drag-region
+      data-tauri-drag-region={isMacPlatform ? true : undefined}
       className="flex h-11 shrink-0 select-none items-center border-b bg-surface text-surface-foreground"
     >
-      {isMacPlatform ? <WindowControls isMacOS /> : null}
+      {isMacPlatform ? <div className="w-[76px] shrink-0" aria-hidden="true" /> : null}
 
       <div
-        data-tauri-drag-region
+        data-tauri-drag-region={isMacPlatform ? true : undefined}
         className="pointer-events-none flex h-full min-w-0 items-center gap-2.5"
       >
         <ConnexMark size="compact" />
@@ -43,7 +41,10 @@ export function AppTitleBar({ activeView, onViewChange }: AppTitleBarProps) {
         </span>
       </div>
 
-      <div data-tauri-drag-region className="h-full min-w-8 flex-1" />
+      <div
+        data-tauri-drag-region={isMacPlatform ? true : undefined}
+        className="h-full min-w-8 flex-1"
+      />
 
       <div className="flex h-full shrink-0 items-center gap-1 px-2">
         <TransferPopover />
@@ -63,8 +64,6 @@ export function AppTitleBar({ activeView, onViewChange }: AppTitleBarProps) {
           <TooltipContent>{isSettingsOpen ? "返回工作区" : "设置"}</TooltipContent>
         </Tooltip>
       </div>
-
-      {isMacPlatform ? null : <WindowControls isMacOS={false} />}
     </header>
   );
 }
