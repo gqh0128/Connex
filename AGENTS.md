@@ -119,8 +119,8 @@ src-tauri/src/
 
 仓库内置 `.agents/skills/shadcn/SKILL.md`，它是新增、查询、调试、组合或更新 shadcn/ui 组件时的权威操作说明。只要任务涉及 `components.json`、`components/ui`、shadcn registry、preset 或现有 shadcn 组件，就必须先使用该 skill。
 
-- 本项目使用 pnpm，所有 shadcn CLI 命令统一运行 `pnpm dlx shadcn@latest ...`，不混用 npm 或 bun。
-- 开始组件工作时先运行 `pnpm dlx shadcn@latest info`，确认当前 style、base、icon library、Tailwind 版本、aliases 和已安装组件。
+- 本项目使用 pnpm，所有 shadcn CLI 命令统一通过仓库脚本 `pnpm shadcn ...` 运行，不混用 npm、bun 或直接的 `pnpm dlx shadcn@latest`。该脚本固定兼容的 shadcn 与 Zod 版本，避免 MCP SDK 被解析到缺少 `zod/v4` 导出的版本；升级这两个版本时必须成对验证。
+- 开始组件工作时先运行 `pnpm shadcn info --json`，确认当前 style、base、icon library、Tailwind 版本、aliases 和已安装组件。
 - 优先复用现有组件；缺少组件时先使用 `search` 查找 registry，再运行 `docs <component>` 获取当前 API 和示例，不能凭记忆猜测组件接口。
 - 安装前确认组件尚未存在。添加 registry 组件后必须阅读生成文件，检查 imports、组合结构、图标库和可访问性。
 - 用户未指定 registry 时不要擅自选择；先确认要使用的 registry。
