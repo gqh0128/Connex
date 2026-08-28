@@ -1,7 +1,24 @@
-import { Files, LoaderCircle, Plus, Settings2, X } from "lucide-react";
+import {
+  CircleX,
+  Files,
+  LoaderCircle,
+  PanelRightClose,
+  Plus,
+  RefreshCw,
+  Settings2,
+  X,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getSessionPresentation } from "@/features/terminal/sessionPresentation";
@@ -26,6 +43,9 @@ type SessionTabsProps = {
   isFilePanelEnabled: boolean;
   onSelect: (localId: string) => void;
   onClose: (localId: string) => void;
+  onReconnect: (localId: string) => void;
+  onCloseOther: (localId: string) => void;
+  onCloseRight: (localId: string) => void;
   onPageSelect: (pageId: WorkspacePageId) => void;
   onPageClose: (pageId: WorkspacePageId) => void;
   onSidebarToggle: () => void;
@@ -43,6 +63,9 @@ export function SessionTabs({
   isFilePanelEnabled,
   onSelect,
   onClose,
+  onReconnect,
+  onCloseOther,
+  onCloseRight,
   onPageSelect,
   onPageClose,
   onSidebarToggle,
@@ -113,59 +136,94 @@ export function SessionTabs({
         className="flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
       >
-        {tabs.map((tab) => {
+        {tabs.map((tab, tabIndex) => {
           const isActive = tab.localId === activeTabId;
           const presentation = getSessionPresentation(tab);
 
           return (
-            <div
-              key={tab.localId}
-              className={cn(
-                "group relative flex w-40 shrink-0 items-stretch border-r",
-                isActive ? "bg-workspace" : "bg-surface hover:bg-muted/60",
-              )}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={`terminal-${tab.localId}`}
-                className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                onClick={() => onSelect(tab.localId)}
-              >
-                <SessionStatusIndicator
-                  tone={presentation.tone}
-                  isBusy={presentation.isBusy}
-                  label={presentation.label}
-                />
-                <span className="truncate">{tab.profile.name}</span>
-              </button>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
+            <ContextMenu key={tab.localId}>
+              <ContextMenuTrigger asChild>
+                <div
+                  className={cn(
+                    "group relative flex w-40 shrink-0 items-stretch border-r",
+                    isActive ? "bg-workspace" : "bg-surface hover:bg-muted/60",
+                  )}
+                >
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`关闭 ${tab.profile.name} 标签页`}
-                    className={cn(
-                      "absolute top-1 right-1",
-                      isActive
-                        ? "opacity-100"
-                        : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-                    )}
-                    onClick={() => onClose(tab.localId)}
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`terminal-${tab.localId}`}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    onClick={() => onSelect(tab.localId)}
                   >
-                    <X data-icon="inline-start" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>关闭标签页</TooltipContent>
-              </Tooltip>
+                    <SessionStatusIndicator
+                      tone={presentation.tone}
+                      isBusy={presentation.isBusy}
+                      label={presentation.label}
+                    />
+                    <span className="truncate">{tab.profile.name}</span>
+                  </button>
 
-              {isActive ? (
-                <span className="absolute inset-x-0 bottom-0 h-px bg-primary" />
-              ) : null}
-            </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`关闭 ${tab.profile.name} 标签页`}
+                        className={cn(
+                          "absolute top-1 right-1",
+                          isActive
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                        )}
+                        onClick={() => onClose(tab.localId)}
+                      >
+                        <X data-icon="inline-start" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>关闭标签页</TooltipContent>
+                  </Tooltip>
+
+                  {isActive ? (
+                    <span className="absolute inset-x-0 bottom-0 h-px bg-primary" />
+                  ) : null}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuGroup>
+                  <ContextMenuItem
+                    disabled={presentation.isBusy}
+                    onSelect={() => onReconnect(tab.localId)}
+                  >
+                    <RefreshCw />
+                    重新连接
+                  </ContextMenuItem>
+                </ContextMenuGroup>
+                <ContextMenuSeparator />
+                <ContextMenuGroup>
+                  <ContextMenuItem onSelect={() => onClose(tab.localId)}>
+                    <X />
+                    关闭标签页
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    disabled={tabs.length <= 1}
+                    onSelect={() => onCloseOther(tab.localId)}
+                  >
+                    <CircleX />
+                    关闭其他会话
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    disabled={tabIndex === tabs.length - 1}
+                    onSelect={() => onCloseRight(tab.localId)}
+                  >
+                    <PanelRightClose />
+                    关闭右侧会话
+                  </ContextMenuItem>
+                </ContextMenuGroup>
+              </ContextMenuContent>
+            </ContextMenu>
           );
         })}
 
@@ -174,53 +232,64 @@ export function SessionTabs({
           const PageIcon = WORKSPACE_PAGE_ICONS[tab.id];
 
           return (
-            <div
-              key={tab.id}
-              className={cn(
-                "group relative flex w-40 shrink-0 items-stretch border-r",
-                isActive ? "bg-workspace" : "bg-surface hover:bg-muted/60",
-              )}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={tab.controlsId}
-                className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                onClick={() => onPageSelect(tab.id)}
-              >
-                <PageIcon
-                  aria-hidden="true"
-                  className="size-3 shrink-0 text-muted-foreground"
-                />
-                <span className="truncate">{tab.label}</span>
-              </button>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
+            <ContextMenu key={tab.id}>
+              <ContextMenuTrigger asChild>
+                <div
+                  className={cn(
+                    "group relative flex w-40 shrink-0 items-stretch border-r",
+                    isActive ? "bg-workspace" : "bg-surface hover:bg-muted/60",
+                  )}
+                >
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`关闭 ${tab.label} 标签页`}
-                    className={cn(
-                      "absolute top-1 right-1",
-                      isActive
-                        ? "opacity-100"
-                        : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-                    )}
-                    onClick={() => onPageClose(tab.id)}
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={tab.controlsId}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 pr-8 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    onClick={() => onPageSelect(tab.id)}
                   >
-                    <X data-icon="inline-start" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>关闭标签页</TooltipContent>
-              </Tooltip>
+                    <PageIcon
+                      aria-hidden="true"
+                      className="size-3 shrink-0 text-muted-foreground"
+                    />
+                    <span className="truncate">{tab.label}</span>
+                  </button>
 
-              {isActive ? (
-                <span className="absolute inset-x-0 bottom-0 h-px bg-primary" />
-              ) : null}
-            </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`关闭 ${tab.label} 标签页`}
+                        className={cn(
+                          "absolute top-1 right-1",
+                          isActive
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                        )}
+                        onClick={() => onPageClose(tab.id)}
+                      >
+                        <X data-icon="inline-start" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>关闭标签页</TooltipContent>
+                  </Tooltip>
+
+                  {isActive ? (
+                    <span className="absolute inset-x-0 bottom-0 h-px bg-primary" />
+                  ) : null}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuGroup>
+                  <ContextMenuItem onSelect={() => onPageClose(tab.id)}>
+                    <X />
+                    关闭标签页
+                  </ContextMenuItem>
+                </ContextMenuGroup>
+              </ContextMenuContent>
+            </ContextMenu>
           );
         })}
       </div>

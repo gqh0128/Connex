@@ -224,6 +224,9 @@ export function AppShell({
                 onViewChange("workspace");
               }}
               onClose={sshSessions.closeSession}
+              onReconnect={sshSessions.reconnectSession}
+              onCloseOther={sshSessions.closeOtherSessions}
+              onCloseRight={sshSessions.closeSessionsToRight}
               onPageSelect={onViewChange}
               onPageClose={onPageClose}
               onSidebarToggle={handleSidebarToggle}

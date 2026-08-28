@@ -3,6 +3,7 @@ import {
   ArrowRight,
   CircleAlert,
   ChevronRight,
+  Copy,
   Download,
   File,
   FileQuestion,
@@ -20,6 +21,14 @@ import {
 
 import { Button } from "@/components/ui/button";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -30,6 +39,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { RemoteFilesController } from "@/features/sftp/hooks/useRemoteFiles";
+import { canWriteClipboardText, writeClipboardText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import type { SessionSnapshot } from "@/types/sessions";
 import type { RemoteFileEntry, RemoteFileKind } from "@/types/sftp";
@@ -54,52 +64,82 @@ export function FilePanel({
   const { directory, isConnected, isLoading } = browser;
 
   return (
-    <aside className={cn("flex min-h-0 flex-col border-l bg-surface", className)}>
-      <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
-        <div className="flex items-center gap-0.5">
-          <PanelButton
-            label={isSelectingUpload ? "正在选择文件" : "上传文件"}
-            icon={Upload}
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <aside className={cn("flex min-h-0 flex-col border-l bg-surface", className)}>
+          <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
+            <div className="flex items-center gap-0.5">
+              <PanelButton
+                label={isSelectingUpload ? "正在选择文件" : "上传文件"}
+                icon={Upload}
+                disabled={
+                  !isConnected ||
+                  !directory ||
+                  isLoading ||
+                  isSelectingUpload ||
+                  !onUpload
+                }
+                onClick={onUpload}
+              />
+              <PanelButton label="下载文件" icon={Download} disabled />
+              <PanelButton label="新建目录" icon={FolderPlus} disabled />
+              <PanelButton
+                label={isLoading ? "正在刷新" : "刷新"}
+                icon={RefreshCw}
+                iconClassName={cn(
+                  isLoading && "animate-spin motion-reduce:animate-none",
+                )}
+                disabled={!isConnected || isLoading}
+                onClick={browser.refresh}
+              />
+              <PanelButton label="更多操作" icon={MoreHorizontal} disabled />
+              {onClose ? (
+                <PanelButton label="关闭文件面板" icon={X} onClick={onClose} />
+              ) : null}
+            </div>
+          </div>
+
+          <RemotePath
+            path={directory?.path ?? null}
+            isConnected={isConnected}
+            isLoading={isLoading}
+            canGoBack={browser.canGoBack}
+            canGoForward={browser.canGoForward}
+            onGoBack={browser.goBack}
+            onGoForward={browser.goForward}
+            onNavigate={browser.openDirectory}
+          />
+
+          <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] border-b px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span>名称</span>
+            <span>大小</span>
+            <span className="text-right">修改时间</span>
+          </div>
+
+          <FilePanelContent session={session} browser={browser} />
+        </aside>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuGroup>
+          <ContextMenuItem
             disabled={
               !isConnected || !directory || isLoading || isSelectingUpload || !onUpload
             }
-            onClick={onUpload}
-          />
-          <PanelButton label="下载文件" icon={Download} disabled />
-          <PanelButton label="新建目录" icon={FolderPlus} disabled />
-          <PanelButton
-            label={isLoading ? "正在刷新" : "刷新"}
-            icon={RefreshCw}
-            iconClassName={cn(isLoading && "animate-spin motion-reduce:animate-none")}
+            onSelect={onUpload}
+          >
+            <Upload />
+            上传文件…
+          </ContextMenuItem>
+          <ContextMenuItem
             disabled={!isConnected || isLoading}
-            onClick={browser.refresh}
-          />
-          <PanelButton label="更多操作" icon={MoreHorizontal} disabled />
-          {onClose ? (
-            <PanelButton label="关闭文件面板" icon={X} onClick={onClose} />
-          ) : null}
-        </div>
-      </div>
-
-      <RemotePath
-        path={directory?.path ?? null}
-        isConnected={isConnected}
-        isLoading={isLoading}
-        canGoBack={browser.canGoBack}
-        canGoForward={browser.canGoForward}
-        onGoBack={browser.goBack}
-        onGoForward={browser.goForward}
-        onNavigate={browser.openDirectory}
-      />
-
-      <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] border-b px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-        <span>名称</span>
-        <span>大小</span>
-        <span className="text-right">修改时间</span>
-      </div>
-
-      <FilePanelContent session={session} browser={browser} />
-    </aside>
+            onSelect={browser.refresh}
+          >
+            <RefreshCw />
+            刷新目录
+          </ContextMenuItem>
+        </ContextMenuGroup>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -184,6 +224,7 @@ function FilePanelContent({ session, browser }: FilePanelContentProps) {
             key={entry.path}
             entry={entry}
             onOpenDirectory={browser.openDirectory}
+            onRefresh={browser.refresh}
           />
         ))}
       </div>
@@ -329,9 +370,10 @@ function getPathBreadcrumbs(path: string): PathBreadcrumb[] {
 type RemoteFileRowProps = {
   entry: RemoteFileEntry;
   onOpenDirectory: (path: string) => void;
+  onRefresh: () => void;
 };
 
-function RemoteFileRow({ entry, onOpenDirectory }: RemoteFileRowProps) {
+function RemoteFileRow({ entry, onOpenDirectory, onRefresh }: RemoteFileRowProps) {
   const name = (
     <span className="flex min-w-0 items-center gap-2">
       <RemoteFileIcon kind={entry.kind} />
@@ -340,30 +382,63 @@ function RemoteFileRow({ entry, onOpenDirectory }: RemoteFileRowProps) {
   );
 
   return (
-    <div
-      role="listitem"
-      className="grid min-h-8 grid-cols-[minmax(0,1fr)_4.5rem_4rem] items-center border-b px-3 text-xs last:border-b-0 hover:bg-accent/60"
-    >
-      <div className="min-w-0">
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          role="listitem"
+          className="grid min-h-8 grid-cols-[minmax(0,1fr)_4.5rem_4rem] items-center border-b px-3 text-xs last:border-b-0 hover:bg-accent/60 data-[state=open]:bg-accent/60"
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <div className="min-w-0">
+            {entry.kind === "directory" ? (
+              <button
+                type="button"
+                className="block w-full min-w-0 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                onClick={() => onOpenDirectory(entry.path)}
+              >
+                {name}
+              </button>
+            ) : (
+              name
+            )}
+          </div>
+          <div className="truncate tabular-nums text-muted-foreground">
+            {formatFileSize(entry)}
+          </div>
+          <div className="truncate text-right tabular-nums text-muted-foreground">
+            {formatModifiedAt(entry.modifiedAt)}
+          </div>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
         {entry.kind === "directory" ? (
-          <button
-            type="button"
-            className="block w-full min-w-0 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            onClick={() => onOpenDirectory(entry.path)}
+          <>
+            <ContextMenuGroup>
+              <ContextMenuItem onSelect={() => onOpenDirectory(entry.path)}>
+                <FolderOpen />
+                打开目录
+              </ContextMenuItem>
+            </ContextMenuGroup>
+            <ContextMenuSeparator />
+          </>
+        ) : null}
+        <ContextMenuGroup>
+          <ContextMenuItem
+            disabled={!canWriteClipboardText()}
+            onSelect={() => {
+              void writeClipboardText(entry.path).catch(() => undefined);
+            }}
           >
-            {name}
-          </button>
-        ) : (
-          name
-        )}
-      </div>
-      <div className="truncate tabular-nums text-muted-foreground">
-        {formatFileSize(entry)}
-      </div>
-      <div className="truncate text-right tabular-nums text-muted-foreground">
-        {formatModifiedAt(entry.modifiedAt)}
-      </div>
-    </div>
+            <Copy />
+            复制路径
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onRefresh}>
+            <RefreshCw />
+            刷新所在目录
+          </ContextMenuItem>
+        </ContextMenuGroup>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

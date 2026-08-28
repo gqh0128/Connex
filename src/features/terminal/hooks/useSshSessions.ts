@@ -57,6 +57,24 @@ export function useSshSessions() {
       .finally(() => closingBackendIdsRef.current.delete(sessionId));
   }, []);
 
+  const retireTabs = useCallback(
+    (closingTabs: SshSessionTab[]) => {
+      for (const closingTab of closingTabs) {
+        closingIdsRef.current.add(closingTab.localId);
+        attemptedIdsRef.current.delete(closingTab.localId);
+        outputHandlersRef.current.delete(closingTab.localId);
+
+        if (closingTab.snapshot) {
+          requestBackendClose(closingTab.snapshot.id);
+          closingIdsRef.current.delete(closingTab.localId);
+        } else if (!startingIdsRef.current.has(closingTab.localId)) {
+          closingIdsRef.current.delete(closingTab.localId);
+        }
+      }
+    },
+    [requestBackendClose],
+  );
+
   const openSession = useCallback(
     (profile: ConnectionProfile) => {
       const existingTab = tabsRef.current.find(
@@ -175,36 +193,85 @@ export function useSshSessions() {
     setActiveTabId(localId);
   }, []);
 
-  const closeSession = useCallback(
-    (localId: string) => {
+  const closeSessions = useCallback(
+    (localIds: string[]) => {
       const currentTabs = tabsRef.current;
-      const closingIndex = currentTabs.findIndex((tab) => tab.localId === localId);
+      const closingIds = new Set(localIds);
+      const closingIndex = currentTabs.findIndex((tab) => closingIds.has(tab.localId));
       if (closingIndex === -1) {
         return;
       }
 
-      const closingTab = currentTabs[closingIndex];
-      const nextTabs = currentTabs.filter((tab) => tab.localId !== localId);
-      closingIdsRef.current.add(localId);
-      attemptedIdsRef.current.delete(localId);
-      outputHandlersRef.current.delete(localId);
+      const closingTabs = currentTabs.filter((tab) => closingIds.has(tab.localId));
+      const nextTabs = currentTabs.filter((tab) => !closingIds.has(tab.localId));
+      retireTabs(closingTabs);
       updateTabs(() => nextTabs);
       setActiveTabId((currentActiveId) => {
-        if (currentActiveId !== localId) {
+        if (!currentActiveId || !closingIds.has(currentActiveId)) {
           return currentActiveId;
         }
 
         return nextTabs[Math.min(closingIndex, nextTabs.length - 1)]?.localId ?? null;
       });
+    },
+    [retireTabs, updateTabs],
+  );
 
-      if (closingTab.snapshot) {
-        requestBackendClose(closingTab.snapshot.id);
-        closingIdsRef.current.delete(localId);
-      } else if (!startingIdsRef.current.has(localId)) {
-        closingIdsRef.current.delete(localId);
+  const closeSession = useCallback(
+    (localId: string) => {
+      closeSessions([localId]);
+    },
+    [closeSessions],
+  );
+
+  const closeOtherSessions = useCallback(
+    (localId: string) => {
+      closeSessions(
+        tabsRef.current
+          .filter((tab) => tab.localId !== localId)
+          .map((tab) => tab.localId),
+      );
+    },
+    [closeSessions],
+  );
+
+  const closeSessionsToRight = useCallback(
+    (localId: string) => {
+      const currentTabs = tabsRef.current;
+      const tabIndex = currentTabs.findIndex((tab) => tab.localId === localId);
+      if (tabIndex >= 0) {
+        closeSessions(currentTabs.slice(tabIndex + 1).map((tab) => tab.localId));
       }
     },
-    [requestBackendClose, updateTabs],
+    [closeSessions],
+  );
+
+  const reconnectSession = useCallback(
+    (localId: string) => {
+      const currentTabs = tabsRef.current;
+      const tabIndex = currentTabs.findIndex((tab) => tab.localId === localId);
+      const reconnectingTab = currentTabs[tabIndex];
+      if (!reconnectingTab) {
+        return;
+      }
+
+      const nextLocalId = crypto.randomUUID();
+      const nextTab: SshSessionTab = {
+        localId: nextLocalId,
+        profile: reconnectingTab.profile,
+        snapshot: null,
+        startError: null,
+        isStarting: false,
+      };
+      const nextTabs = [...currentTabs];
+      nextTabs[tabIndex] = nextTab;
+      retireTabs([reconnectingTab]);
+      updateTabs(() => nextTabs);
+      setActiveTabId((currentActiveId) =>
+        currentActiveId === localId ? nextLocalId : currentActiveId,
+      );
+    },
+    [retireTabs, updateTabs],
   );
 
   const decideHostKey = useCallback(
@@ -256,6 +323,9 @@ export function useSshSessions() {
     openSession,
     selectSession,
     closeSession,
+    closeOtherSessions,
+    closeSessionsToRight,
+    reconnectSession,
     startSession,
     registerOutputHandler,
     decideHostKey,

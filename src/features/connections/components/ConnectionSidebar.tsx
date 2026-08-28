@@ -11,6 +11,16 @@ import {
 
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -20,6 +30,8 @@ import {
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { writeClipboardText } from "@/lib/clipboard";
+import { getCommandError } from "@/lib/tauri/errors";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile, SaveConnectionInput } from "@/types/connections";
 
@@ -58,6 +70,10 @@ export const ConnectionSidebar = forwardRef<
   const [editingConnection, setEditingConnection] = useState<ConnectionProfile | null>(
     null,
   );
+  const [deletingConnection, setDeletingConnection] =
+    useState<ConnectionProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(0);
   const visibleConnections = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -109,6 +125,23 @@ export const ConnectionSidebar = forwardRef<
     }
 
     return create(input);
+  };
+
+  const handleDeleteConnection = async () => {
+    if (!deletingConnection) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await remove(deletingConnection.id);
+      setDeletingConnection(null);
+    } catch (error) {
+      setDeleteError(getCommandError(error).message);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const toggleSearch = () => {
@@ -195,6 +228,15 @@ export const ConnectionSidebar = forwardRef<
                     connection={connection}
                     onConnect={() => onConnect(connection)}
                     onEdit={() => openEditDialog(connection)}
+                    onCopyAddress={() => {
+                      void writeClipboardText(
+                        `${connection.username}@${connection.host}:${connection.port}`,
+                      ).catch(() => undefined);
+                    }}
+                    onDelete={() => {
+                      setDeleteError(null);
+                      setDeletingConnection(connection);
+                    }}
                   />
                 ))}
               </div>
@@ -228,6 +270,43 @@ export const ConnectionSidebar = forwardRef<
         }
         onDelete={editingConnection ? () => remove(editingConnection.id) : undefined}
       />
+
+      <AlertDialog
+        open={deletingConnection !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !isDeleting) {
+            setDeletingConnection(null);
+            setDeleteError(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除“{deletingConnection?.name}”？</AlertDialogTitle>
+            <AlertDialogDescription>
+              连接配置和已保存的凭据都会从这台设备移除，此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {deleteError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteConnection();
+              }}
+            >
+              {isDeleting ? "正在删除…" : "删除连接"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 });

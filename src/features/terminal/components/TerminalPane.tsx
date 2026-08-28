@@ -1,10 +1,34 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { CircleAlert, CircleStop, LoaderCircle, ShieldQuestion } from "lucide-react";
-import { useEffect, useRef } from "react";
+import {
+  CircleAlert,
+  CircleStop,
+  ClipboardPaste,
+  Copy,
+  Eraser,
+  LoaderCircle,
+  ShieldQuestion,
+  TextSelect,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { useTheme } from "@/app/useTheme";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  canReadClipboardText,
+  canWriteClipboardText,
+  readClipboardText,
+  writeClipboardText,
+} from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
 import { getSessionPresentation } from "../sessionPresentation";
@@ -44,6 +68,7 @@ export function TerminalPane({
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<(() => void) | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
   const isVisible = isActive && isWorkspaceVisible;
   const presentation = getSessionPresentation(tab);
 
@@ -212,6 +237,23 @@ export function TerminalPane({
     }
   }, [tab.snapshot?.state]);
 
+  const copySelection = () => {
+    const selection = terminalRef.current?.getSelection() ?? "";
+    if (selection) {
+      void writeClipboardText(selection).catch(() => undefined);
+    }
+  };
+
+  const pasteClipboard = () => {
+    void readClipboardText()
+      .then((value) => {
+        if (value) {
+          terminalRef.current?.paste(value);
+        }
+      })
+      .catch(() => undefined);
+  };
+
   return (
     <div
       id={`terminal-${tab.localId}`}
@@ -223,13 +265,60 @@ export function TerminalPane({
         isVisible ? "visible" : "invisible pointer-events-none",
       )}
     >
-      <div className="h-full min-h-0 p-3">
-        <div
-          ref={hostRef}
-          data-visible={isVisible}
-          className="connex-terminal h-full min-h-0 w-full overflow-hidden"
-        />
-      </div>
+      <ContextMenu
+        onOpenChange={(isOpen) => {
+          if (isOpen) {
+            setHasSelection(terminalRef.current?.hasSelection() ?? false);
+          }
+        }}
+      >
+        <ContextMenuTrigger asChild>
+          <div className="h-full min-h-0 p-3">
+            <div
+              ref={hostRef}
+              data-visible={isVisible}
+              className="connex-terminal h-full min-h-0 w-full overflow-hidden"
+            />
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            terminalRef.current?.focus();
+          }}
+        >
+          <ContextMenuGroup>
+            <ContextMenuItem
+              disabled={!hasSelection || !canWriteClipboardText()}
+              onSelect={copySelection}
+            >
+              <Copy />
+              复制
+              <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={tab.snapshot?.state !== "connected" || !canReadClipboardText()}
+              onSelect={pasteClipboard}
+            >
+              <ClipboardPaste />
+              粘贴
+              <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => terminalRef.current?.selectAll()}>
+              <TextSelect />
+              全选
+              <ContextMenuShortcut>⌘A</ContextMenuShortcut>
+            </ContextMenuItem>
+          </ContextMenuGroup>
+          <ContextMenuSeparator />
+          <ContextMenuGroup>
+            <ContextMenuItem onSelect={() => terminalRef.current?.clear()}>
+              <Eraser />
+              清屏
+            </ContextMenuItem>
+          </ContextMenuGroup>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {tab.snapshot?.state === "connected" ? null : (
         <SessionStateNotice
