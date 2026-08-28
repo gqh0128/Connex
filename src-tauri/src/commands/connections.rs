@@ -1,6 +1,5 @@
 use tauri::State;
 
-use crate::domain::connections::ConnectionDraft;
 use crate::models::connections::{ConnectionProfileDto, SaveConnectionInput};
 use crate::models::error::CommandError;
 use crate::services::connections::ConnectionService;
@@ -21,10 +20,10 @@ pub async fn create_connection(
     input: SaveConnectionInput,
     service: State<'_, ConnectionService>,
 ) -> Result<ConnectionProfileDto, CommandError> {
-    let draft = ConnectionDraft::try_from(input).map_err(CommandError::from)?;
+    let (draft, credential) = input.into_parts().map_err(CommandError::from)?;
 
     service
-        .create(draft)
+        .create(draft, credential)
         .await
         .map(Into::into)
         .map_err(Into::into)
@@ -36,10 +35,10 @@ pub async fn update_connection(
     input: SaveConnectionInput,
     service: State<'_, ConnectionService>,
 ) -> Result<ConnectionProfileDto, CommandError> {
-    let draft = ConnectionDraft::try_from(input).map_err(CommandError::from)?;
+    let (draft, credential) = input.into_parts().map_err(CommandError::from)?;
 
     service
-        .update(id, draft)
+        .update(id, draft, credential)
         .await
         .map(Into::into)
         .map_err(Into::into)

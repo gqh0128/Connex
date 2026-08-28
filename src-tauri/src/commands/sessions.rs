@@ -21,19 +21,13 @@ pub async fn start_ssh_session(
     sessions: State<'_, SshSessionManager>,
 ) -> Result<SessionSnapshotDto, CommandError> {
     let terminal_size = input.terminal_size().map_err(CommandError::from)?;
-    let profile = connections
-        .get(input.connection_id)
+    let (profile, credential) = connections
+        .get_for_session(input.connection_id)
         .await
         .map_err(CommandError::from)?;
     let (event_sender, mut event_receiver) = mpsc::channel(SESSION_EVENT_QUEUE_CAPACITY);
     let snapshot = sessions
-        .start(
-            profile,
-            input.password,
-            input.private_key_passphrase,
-            terminal_size,
-            event_sender,
-        )
+        .start(profile, credential, terminal_size, event_sender)
         .await
         .map_err(CommandError::from)?;
 

@@ -6,6 +6,7 @@ use tokio_rusqlite::Connection;
 const MIGRATIONS: &[&str] = &[
     include_str!("../../migrations/0001_create_connections.sql"),
     include_str!("../../migrations/0002_create_known_hosts.sql"),
+    include_str!("../../migrations/0003_track_stored_credentials.sql"),
 ];
 
 #[derive(Clone)]

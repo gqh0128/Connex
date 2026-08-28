@@ -24,7 +24,7 @@ impl ConnectionRepository {
                 |database| -> tokio_rusqlite::rusqlite::Result<Vec<ConnectionRecord>> {
                     let mut statement = database.prepare(
                         "SELECT id, name, host, port, username, authentication_method, \
-                     private_key_path, created_at, updated_at, last_connected_at \
+                     private_key_path, has_stored_credential, created_at, updated_at, last_connected_at \
                      FROM connection_profiles \
                      ORDER BY COALESCE(last_connected_at, updated_at) DESC, name COLLATE NOCASE",
                     )?;
@@ -59,6 +59,7 @@ impl ConnectionRepository {
         &self,
         id: String,
         draft: ConnectionDraft,
+        has_stored_credential: bool,
     ) -> Result<ConnectionProfile, ConnectionRepositoryError> {
         let authentication_method = draft.authentication_method.as_storage_value().to_owned();
         let record = self
@@ -67,8 +68,9 @@ impl ConnectionRepository {
                 move |database| -> tokio_rusqlite::rusqlite::Result<Option<ConnectionRecord>> {
                     database.execute(
                         "INSERT INTO connection_profiles (\
-                        id, name, host, port, username, authentication_method, private_key_path\
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                        id, name, host, port, username, authentication_method, private_key_path, \
+                        has_stored_credential\
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                         params![
                             id,
                             draft.name,
@@ -77,6 +79,7 @@ impl ConnectionRepository {
                             draft.username,
                             authentication_method,
                             draft.private_key_path,
+                            has_stored_credential,
                         ],
                     )?;
 
@@ -94,6 +97,7 @@ impl ConnectionRepository {
         &self,
         id: String,
         draft: ConnectionDraft,
+        has_stored_credential: bool,
     ) -> Result<ConnectionProfile, ConnectionRepositoryError> {
         let authentication_method = draft.authentication_method.as_storage_value().to_owned();
         let record = self
@@ -104,6 +108,7 @@ impl ConnectionRepository {
                         "UPDATE connection_profiles SET \
                         name = ?2, host = ?3, port = ?4, username = ?5, \
                         authentication_method = ?6, private_key_path = ?7, \
+                        has_stored_credential = ?8, \
                         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
                      WHERE id = ?1",
                         params![
@@ -114,6 +119,7 @@ impl ConnectionRepository {
                             draft.username,
                             authentication_method,
                             draft.private_key_path,
+                            has_stored_credential,
                         ],
                     )?;
 
@@ -173,6 +179,7 @@ struct ConnectionRecord {
     username: String,
     authentication_method: String,
     private_key_path: Option<String>,
+    has_stored_credential: bool,
     created_at: String,
     updated_at: String,
     last_connected_at: Option<String>,
@@ -188,9 +195,10 @@ impl ConnectionRecord {
             username: row.get(4)?,
             authentication_method: row.get(5)?,
             private_key_path: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
-            last_connected_at: row.get(9)?,
+            has_stored_credential: row.get(7)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+            last_connected_at: row.get(10)?,
         })
     }
 }
@@ -212,6 +220,7 @@ impl TryFrom<ConnectionRecord> for ConnectionProfile {
             username: record.username,
             authentication_method,
             private_key_path: record.private_key_path,
+            has_stored_credential: record.has_stored_credential,
             created_at: record.created_at,
             updated_at: record.updated_at,
             last_connected_at: record.last_connected_at,
@@ -226,7 +235,7 @@ fn select_by_id(
     database
         .query_row(
             "SELECT id, name, host, port, username, authentication_method, \
-             private_key_path, created_at, updated_at, last_connected_at \
+             private_key_path, has_stored_credential, created_at, updated_at, last_connected_at \
              FROM connection_profiles WHERE id = ?1",
             [id],
             ConnectionRecord::from_row,

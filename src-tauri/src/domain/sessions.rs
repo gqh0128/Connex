@@ -1,8 +1,5 @@
-use std::fmt;
-
-use zeroize::Zeroizing;
-
 use crate::domain::connections::{AuthenticationMethod, ConnectionProfile};
+use crate::domain::credentials::SecretString;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SessionState {
@@ -128,28 +125,6 @@ impl TerminalSize {
     }
 }
 
-pub struct SecretString(Zeroizing<String>);
-
-impl SecretString {
-    pub fn new(value: String) -> Self {
-        Self(Zeroizing::new(value))
-    }
-
-    pub fn expose(&self) -> &str {
-        self.0.as_str()
-    }
-
-    pub fn take(mut self) -> String {
-        std::mem::take(&mut *self.0)
-    }
-}
-
-impl fmt::Debug for SecretString {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("SecretString([redacted])")
-    }
-}
-
 #[derive(Debug)]
 pub enum SessionAuthentication {
     Password(SecretString),
@@ -170,20 +145,16 @@ pub struct StartSessionRequest {
 impl StartSessionRequest {
     pub fn new(
         profile: ConnectionProfile,
-        password: Option<String>,
-        private_key_passphrase: Option<String>,
+        credential: Option<SecretString>,
         terminal_size: TerminalSize,
     ) -> Result<Self, SessionValidationError> {
         let authentication = match profile.authentication_method {
             AuthenticationMethod::Password => {
-                let password =
-                    password
-                        .filter(|value| !value.is_empty())
-                        .ok_or(SessionValidationError {
-                            field: "password",
-                            message: "请输入连接密码。",
-                        })?;
-                SessionAuthentication::Password(SecretString::new(password))
+                let password = credential.ok_or(SessionValidationError {
+                    field: "password",
+                    message: "当前连接没有已保存的密码，请编辑连接并补充密码。",
+                })?;
+                SessionAuthentication::Password(password)
             }
             AuthenticationMethod::PrivateKey => {
                 let path = profile
@@ -193,10 +164,10 @@ impl StartSessionRequest {
                         field: "privateKeyPath",
                         message: "当前连接没有可用的私钥路径。",
                     })?;
-                let passphrase = private_key_passphrase
-                    .filter(|value| !value.is_empty())
-                    .map(SecretString::new);
-                SessionAuthentication::PrivateKey { path, passphrase }
+                SessionAuthentication::PrivateKey {
+                    path,
+                    passphrase: credential,
+                }
             }
             AuthenticationMethod::Agent => SessionAuthentication::Agent,
         };

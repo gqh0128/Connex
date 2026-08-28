@@ -179,7 +179,7 @@ async fn authenticate(
 
 async fn load_private_key(
     path: String,
-    passphrase: Option<crate::domain::sessions::SecretString>,
+    passphrase: Option<crate::domain::credentials::SecretString>,
 ) -> Result<russh::keys::PrivateKey, SshTransportError> {
     let path = PathBuf::from(path);
     tokio::task::spawn_blocking(move || {

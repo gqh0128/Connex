@@ -150,7 +150,11 @@ local file ↔ Rust buffered I/O ↔ SFTP channel ↔ remote file
 - known host 元数据
 - 后续需要时的传输历史
 
-数据库从第一张表开始使用版本化 migration，不在启动代码里散落 `CREATE TABLE`。密码和私钥口令不进入数据库；它们存入系统凭据管理器，SQLite 只保存稳定引用。Linux 没有可用 secret service 时，禁用“记住密码”，不能退化为明文文件。
+数据库从第一张表开始使用版本化 migration，不在启动代码里散落 `CREATE TABLE`。密码和私钥口令不进入数据库；连接 UUID 作为稳定引用，SQLite 只记录该连接是否应存在安全凭据，由 Rust 侧 `CredentialStore` 通过 `keyring` 写入 macOS Keychain、Windows Credential Manager 或 Linux Secret Service。Linux 没有可用 secret service 时保存操作必须明确失败，不能退化为明文文件；未保存口令的私钥连接和 Agent 连接不访问系统凭据管理器。
+
+创建连接时，密码认证必须同时保存密码；私钥认证保存私钥路径，并按需保存私钥口令。编辑连接时凭据字段留空表示保留原值，切换认证方式时清理不再适用的秘密；删除连接时同步移除系统凭据。SQLite 与系统凭据管理器无法组成同一事务，因此服务层先更新凭据、再更新元数据，并在元数据失败时尽力恢复原凭据。
+
+启动 SSH 会话时，前端只提交连接 ID 和终端尺寸。Rust 侧读取 SQLite 配置，再按连接 UUID 从系统凭据管理器取出秘密并直接构造认证请求；密码和私钥口令不返回 React，也不进入会话 IPC 输入。没有已保存密码的旧连接会返回可操作错误，用户编辑连接补录后即可恢复双击直连。
 
 持久化使用 Rust 侧共享的 `Database` 基础设施和 `tokio-rusqlite` 独立数据库线程，SQLite 以 bundled 模式随应用构建，避免平台系统库版本差异。数据库文件位于 Tauri 应用数据目录；连接配置、known host 等仓库共享同一条连接与按 `user_version` 顺序执行的 migration。前端只通过类型化 commands 访问持久化数据，不能直接执行 SQL。
 

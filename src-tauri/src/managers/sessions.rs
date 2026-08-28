@@ -5,6 +5,7 @@ use tokio::sync::{RwLock, mpsc, watch};
 use uuid::Uuid;
 
 use crate::domain::connections::ConnectionProfile;
+use crate::domain::credentials::SecretString;
 use crate::domain::sessions::{
     HostKeyDecision, SessionControl, SessionEvent, SessionSnapshot, SessionState,
     SessionValidationError, StartSessionRequest, TerminalSize,
@@ -34,15 +35,13 @@ impl SshSessionManager {
     pub async fn start(
         &self,
         profile: ConnectionProfile,
-        password: Option<String>,
-        private_key_passphrase: Option<String>,
+        credential: Option<SecretString>,
         terminal_size: TerminalSize,
         events: mpsc::Sender<SessionEvent>,
     ) -> Result<SessionSnapshot, SessionManagerError> {
         let session_id = Uuid::new_v4().to_string();
-        let request =
-            StartSessionRequest::new(profile, password, private_key_passphrase, terminal_size)
-                .map_err(SessionManagerError::from)?;
+        let request = StartSessionRequest::new(profile, credential, terminal_size)
+            .map_err(SessionManagerError::from)?;
         let initial_snapshot = SessionSnapshot::connecting(session_id.clone(), &request.profile);
         let snapshot = Arc::new(RwLock::new(initial_snapshot.clone()));
         let (control_sender, control_receiver) = mpsc::channel(CONTROL_QUEUE_CAPACITY);

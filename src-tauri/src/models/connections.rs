@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::connections::{
     AuthenticationMethod, ConnectionDraft, ConnectionProfile, ConnectionValidationError,
 };
+use crate::domain::credentials::SecretString;
 use crate::services::connections::ConnectionServiceError;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -13,7 +14,7 @@ pub enum AuthenticationMethodDto {
     Agent,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveConnectionInput {
     pub name: String,
@@ -22,21 +23,39 @@ pub struct SaveConnectionInput {
     pub username: String,
     pub authentication_method: AuthenticationMethodDto,
     pub private_key_path: Option<String>,
+    pub password: Option<String>,
+    pub private_key_passphrase: Option<String>,
 }
 
-impl TryFrom<SaveConnectionInput> for ConnectionDraft {
-    type Error = ConnectionServiceError;
-
-    fn try_from(input: SaveConnectionInput) -> Result<Self, Self::Error> {
-        ConnectionDraft::new(
-            input.name,
-            input.host,
-            input.port,
-            input.username,
-            input.authentication_method.into(),
-            input.private_key_path,
+impl SaveConnectionInput {
+    pub fn into_parts(
+        self,
+    ) -> Result<(ConnectionDraft, Option<SecretString>), ConnectionServiceError> {
+        let authentication_method = AuthenticationMethod::from(self.authentication_method);
+        let password = self
+            .password
+            .filter(|value| !value.is_empty())
+            .map(SecretString::new);
+        let private_key_passphrase = self
+            .private_key_passphrase
+            .filter(|value| !value.is_empty())
+            .map(SecretString::new);
+        let credential = match authentication_method {
+            AuthenticationMethod::Password => password,
+            AuthenticationMethod::PrivateKey => private_key_passphrase,
+            AuthenticationMethod::Agent => None,
+        };
+        let draft = ConnectionDraft::new(
+            self.name,
+            self.host,
+            self.port,
+            self.username,
+            authentication_method,
+            self.private_key_path,
         )
-        .map_err(ConnectionServiceError::from)
+        .map_err(ConnectionServiceError::from)?;
+
+        Ok((draft, credential))
     }
 }
 
@@ -79,6 +98,7 @@ pub struct ConnectionProfileDto {
     pub username: String,
     pub authentication_method: AuthenticationMethodDto,
     pub private_key_path: Option<String>,
+    pub has_stored_credential: bool,
     pub created_at: String,
     pub updated_at: String,
     pub last_connected_at: Option<String>,
@@ -94,6 +114,7 @@ impl From<ConnectionProfile> for ConnectionProfileDto {
             username: profile.username,
             authentication_method: profile.authentication_method.into(),
             private_key_path: profile.private_key_path,
+            has_stored_credential: profile.has_stored_credential,
             created_at: profile.created_at,
             updated_at: profile.updated_at,
             last_connected_at: profile.last_connected_at,

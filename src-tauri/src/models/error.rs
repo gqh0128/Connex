@@ -29,6 +29,11 @@ impl From<ConnectionServiceError> for CommandError {
                 message: "连接数据暂时无法访问，请稍后重试。",
                 field: None,
             },
+            ConnectionServiceError::Credentials => Self {
+                code: "credential_storage_unavailable",
+                message: "系统凭据存储暂时无法访问，请检查系统安全设置后重试。",
+                field: None,
+            },
         }
     }
 }

@@ -33,6 +33,7 @@ pub struct ConnectionProfile {
     pub username: String,
     pub authentication_method: AuthenticationMethod,
     pub private_key_path: Option<String>,
+    pub has_stored_credential: bool,
     pub created_at: String,
     pub updated_at: String,
     pub last_connected_at: Option<String>,

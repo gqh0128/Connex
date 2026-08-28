@@ -10,8 +10,6 @@ use crate::managers::sessions::SessionManagerError;
 #[serde(rename_all = "camelCase")]
 pub struct StartSshSessionInput {
     pub connection_id: String,
-    pub password: Option<String>,
-    pub private_key_passphrase: Option<String>,
     pub columns: u32,
     pub rows: u32,
     #[serde(default)]

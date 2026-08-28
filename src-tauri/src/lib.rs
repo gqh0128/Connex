@@ -8,6 +8,7 @@ mod services;
 use tauri::{Manager, WindowEvent};
 
 use infrastructure::connections::ConnectionRepository;
+use infrastructure::credentials::CredentialStore;
 use infrastructure::database::Database;
 use infrastructure::known_hosts::KnownHostRepository;
 use infrastructure::ssh::SshConnector;
@@ -25,8 +26,10 @@ pub fn run() {
             let database = tauri::async_runtime::block_on(Database::open(
                 app_data_dir.join("connex.sqlite3"),
             ))?;
-            let connection_service =
-                ConnectionService::new(ConnectionRepository::new(database.clone()));
+            let connection_service = ConnectionService::new(
+                ConnectionRepository::new(database.clone()),
+                CredentialStore::new(),
+            );
             let session_manager = SshSessionManager::new(SshConnector::new(
                 KnownHostRepository::new(database.clone()),
             ));
