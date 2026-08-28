@@ -67,6 +67,21 @@ impl From<SessionManagerError> for CommandError {
                 message: "SSH 会话暂时不可用，请重新连接。",
                 field: None,
             },
+            SessionManagerError::InvalidRemotePath => Self {
+                code: "invalid_remote_path",
+                message: "远程路径无效，请返回上一级目录后重试。",
+                field: Some("path"),
+            },
+            SessionManagerError::RemoteFilesUnavailable => Self {
+                code: "sftp_unavailable",
+                message: "服务器没有提供可用的 SFTP 文件服务。",
+                field: None,
+            },
+            SessionManagerError::RemoteDirectoryUnavailable => Self {
+                code: "remote_directory_unavailable",
+                message: "无法读取这个远程目录，请检查路径和访问权限。",
+                field: Some("path"),
+            },
         }
     }
 }

@@ -68,6 +68,7 @@ pub fn run() {
             commands::sessions::resize_ssh_session,
             commands::sessions::keepalive_ssh_session,
             commands::sessions::close_ssh_session,
+            commands::sftp::list_remote_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

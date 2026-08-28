@@ -18,12 +18,25 @@ use crate::domain::sessions::{
     SessionFailure, SessionFailureCode, SessionSnapshot, SessionState, StartSessionRequest,
 };
 use crate::infrastructure::known_hosts::KnownHostRepository;
+use crate::infrastructure::sftp::{
+    RemoteFileSession, RemoteFileSessionState, SharedRemoteFileSession,
+};
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(120);
 const HOST_VERIFICATION_TIMEOUT: Duration = Duration::from_secs(120);
+const SFTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub type SharedSessionSnapshot = Arc<RwLock<SessionSnapshot>>;
+
+pub struct SshSessionRuntime {
+    pub snapshot: SharedSessionSnapshot,
+    pub remote_files: SharedRemoteFileSession,
+    pub controls: mpsc::Receiver<SessionControl>,
+    pub host_key_decisions: mpsc::Receiver<HostKeyDecision>,
+    pub cancellation: watch::Receiver<bool>,
+    pub events: mpsc::Sender<SessionEvent>,
+}
 
 #[derive(Clone)]
 pub struct SshConnector {
@@ -38,12 +51,16 @@ impl SshConnector {
     pub async fn run(
         &self,
         request: StartSessionRequest,
-        snapshot: SharedSessionSnapshot,
-        controls: mpsc::Receiver<SessionControl>,
-        host_key_decisions: mpsc::Receiver<HostKeyDecision>,
-        cancellation: watch::Receiver<bool>,
-        events: mpsc::Sender<SessionEvent>,
+        runtime: SshSessionRuntime,
     ) -> Result<SshSessionEnd, SshTransportError> {
+        let SshSessionRuntime {
+            snapshot,
+            remote_files,
+            controls,
+            host_key_decisions,
+            cancellation,
+            events,
+        } = runtime;
         let reporter = SessionReporter::new(snapshot, events);
         let stream = connect_tcp(
             &request.profile.host,
@@ -121,10 +138,40 @@ impl SshConnector {
         )
         .await??;
         cancellable(cancellation.clone(), channel.request_shell(true)).await??;
+        let remote_file_state = connect_remote_files(&session, cancellation.clone()).await?;
+        *remote_files.write().await = remote_file_state;
         reporter.transition(SessionState::Connected, None).await?;
 
         run_shell_loop(&mut session, &mut channel, controls, cancellation, reporter).await
     }
+}
+
+async fn connect_remote_files(
+    session: &client::Handle<HostKeyHandler>,
+    mut cancellation: watch::Receiver<bool>,
+) -> Result<RemoteFileSessionState, SshTransportError> {
+    let result = tokio::select! {
+        _ = cancellation.changed() => return Err(SshTransportError::Cancelled),
+        result = timeout(SFTP_CONNECT_TIMEOUT, open_remote_file_session(session)) => result,
+    };
+
+    Ok(match result {
+        Ok(Ok(remote_files)) => RemoteFileSessionState::Ready(remote_files),
+        Ok(Err(())) | Err(_) => RemoteFileSessionState::Unavailable,
+    })
+}
+
+async fn open_remote_file_session(
+    session: &client::Handle<HostKeyHandler>,
+) -> Result<RemoteFileSession, ()> {
+    let channel = session.channel_open_session().await.map_err(|_| ())?;
+    channel
+        .request_subsystem(true, "sftp")
+        .await
+        .map_err(|_| ())?;
+    RemoteFileSession::connect(channel.into_stream())
+        .await
+        .map_err(|_| ())
 }
 
 async fn connect_tcp(

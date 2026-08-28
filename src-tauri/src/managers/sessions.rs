@@ -10,8 +10,12 @@ use crate::domain::sessions::{
     HostKeyDecision, SessionControl, SessionEvent, SessionSnapshot, SessionState,
     SessionValidationError, StartSessionRequest, TerminalSize,
 };
+use crate::domain::sftp::RemoteDirectory;
+use crate::infrastructure::sftp::{
+    RemoteFileError, RemoteFileSessionState, SharedRemoteFileSession,
+};
 use crate::infrastructure::ssh::{
-    SharedSessionSnapshot, SshConnector, SshSessionEnd, SshTransportError,
+    SharedSessionSnapshot, SshConnector, SshSessionEnd, SshSessionRuntime, SshTransportError,
 };
 
 const CONTROL_QUEUE_CAPACITY: usize = 64;
@@ -44,11 +48,13 @@ impl SshSessionManager {
             .map_err(SessionManagerError::from)?;
         let initial_snapshot = SessionSnapshot::connecting(session_id.clone(), &request.profile);
         let snapshot = Arc::new(RwLock::new(initial_snapshot.clone()));
+        let remote_files = Arc::new(RwLock::new(RemoteFileSessionState::Connecting));
         let (control_sender, control_receiver) = mpsc::channel(CONTROL_QUEUE_CAPACITY);
         let (host_key_sender, host_key_receiver) = mpsc::channel(HOST_KEY_QUEUE_CAPACITY);
         let (cancellation_sender, cancellation_receiver) = watch::channel(false);
         let entry = SessionEntry {
             snapshot: snapshot.clone(),
+            remote_files: remote_files.clone(),
             controls: control_sender,
             host_key_decisions: host_key_sender,
             cancellation: cancellation_sender,
@@ -74,11 +80,14 @@ impl SshSessionManager {
             let result = connector
                 .run(
                     request,
-                    snapshot.clone(),
-                    control_receiver,
-                    host_key_receiver,
-                    cancellation_receiver,
-                    events.clone(),
+                    SshSessionRuntime {
+                        snapshot: snapshot.clone(),
+                        remote_files,
+                        controls: control_receiver,
+                        host_key_decisions: host_key_receiver,
+                        cancellation: cancellation_receiver,
+                        events: events.clone(),
+                    },
                 )
                 .await;
 
@@ -138,6 +147,29 @@ impl SshSessionManager {
     pub async fn keepalive(&self, session_id: &str) -> Result<(), SessionManagerError> {
         self.send_connected(session_id, SessionControl::Keepalive)
             .await
+    }
+
+    pub async fn list_remote_directory(
+        &self,
+        session_id: &str,
+        path: Option<&str>,
+    ) -> Result<RemoteDirectory, SessionManagerError> {
+        let entry = self.entry(session_id).await?;
+        if entry.snapshot.read().await.state != SessionState::Connected {
+            return Err(SessionManagerError::InvalidState);
+        }
+
+        let remote_files = match entry.remote_files.read().await.clone() {
+            RemoteFileSessionState::Ready(remote_files) => remote_files,
+            RemoteFileSessionState::Connecting | RemoteFileSessionState::Unavailable => {
+                return Err(SessionManagerError::RemoteFilesUnavailable);
+            }
+        };
+
+        remote_files
+            .list_directory(path)
+            .await
+            .map_err(SessionManagerError::from)
     }
 
     pub async fn close(&self, session_id: &str) -> Result<(), SessionManagerError> {
@@ -204,6 +236,7 @@ impl SshSessionManager {
 #[derive(Clone)]
 struct SessionEntry {
     snapshot: SharedSessionSnapshot,
+    remote_files: SharedRemoteFileSession,
     controls: mpsc::Sender<SessionControl>,
     host_key_decisions: mpsc::Sender<HostKeyDecision>,
     cancellation: watch::Sender<bool>,
@@ -251,6 +284,9 @@ pub enum SessionManagerError {
     NotFound,
     InvalidState,
     Unavailable,
+    InvalidRemotePath,
+    RemoteFilesUnavailable,
+    RemoteDirectoryUnavailable,
 }
 
 impl From<SessionValidationError> for SessionManagerError {
@@ -262,6 +298,16 @@ impl From<SessionValidationError> for SessionManagerError {
     }
 }
 
+impl From<RemoteFileError> for SessionManagerError {
+    fn from(error: RemoteFileError) -> Self {
+        match error {
+            RemoteFileError::InvalidPath => Self::InvalidRemotePath,
+            RemoteFileError::Unavailable => Self::RemoteFilesUnavailable,
+            RemoteFileError::DirectoryUnavailable => Self::RemoteDirectoryUnavailable,
+        }
+    }
+}
+
 impl std::fmt::Display for SessionManagerError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -269,6 +315,11 @@ impl std::fmt::Display for SessionManagerError {
             Self::NotFound => formatter.write_str("SSH session not found"),
             Self::InvalidState => formatter.write_str("SSH session is not ready for this action"),
             Self::Unavailable => formatter.write_str("SSH session is unavailable"),
+            Self::InvalidRemotePath => formatter.write_str("remote path is invalid"),
+            Self::RemoteFilesUnavailable => formatter.write_str("SFTP session is unavailable"),
+            Self::RemoteDirectoryUnavailable => {
+                formatter.write_str("remote directory is unavailable")
+            }
         }
     }
 }

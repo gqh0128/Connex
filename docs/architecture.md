@@ -103,7 +103,7 @@ idle → connecting → verifyingHost → authenticating → connected
 - `Keepalive`
 - `Close`
 
-`OpenSftp` 会在传输 manager 开始实现时加入同一控制队列，并通过一次性响应通道返回已经初始化的 SFTP session；当前 SSH 基线不提前暴露未被消费的 SFTP handle。
+SSH 认证和 Shell 请求成功后，会话任务立即在同一个已验证 transport 上打开独立的 SFTP channel，并在最多 15 秒内初始化 `russh-sftp` client。SFTP client 由对应 `SessionEntry` 持有；目录命令只克隆 client 引用，不跨网络 `.await` 持有会话表或状态锁。服务器未提供 SFTP 时终端仍保持连接，文件面板单独显示结构化错误。
 
 打开 Shell 前先请求远程 PTY，默认终端类型为 `xterm-256color`。初始行列数优先来自 xterm FitAddon；如果 WebKit 首帧布局尚未稳定，则先使用 xterm 默认行列启动，首个有效 ResizeObserver 结果立即发送 resize，不能让连接生命周期等待布局事件。后续容器变化继续发送 resize。终端输出背压需要在技术验证中用持续大输出测试，不能采用无界内存队列。
 
@@ -131,7 +131,9 @@ SSH transport 固定使用 `russh 0.63.x` 的 `ring + rsa + flate2` 特性，避
 
 已连接会话通过独立 SFTP channel 访问远端文件，共享已经完成主机验证和认证的 SSH transport。终端和传输任务必须异步并发，任何大文件操作都不能占住会话全局锁。
 
-文件列表只返回显示所需元数据：名称、类型、大小、修改时间、权限和符号链接信息。远程路径以原始服务器语义处理，不假设本地路径分隔符。
+SFTP 初始化时通过 `canonicalize(".")` 取得服务器为当前用户设置的默认目录。活动 SSH 会话进入 `connected` 后，前端自动调用类型化 `list_remote_directory` command 读取该目录；切换会话会改为读取新会话自己的默认目录。目录导航只回传由服务器返回的完整路径，Rust 会限制路径长度、拒绝 NUL 并再次 canonicalize 后再读取。
+
+文件列表只返回当前界面所需元数据：名称、完整远程路径、类型、大小和修改时间，并在 Rust 侧按目录优先、名称排序。远程路径以 SFTP 的服务器语义处理，不拿它拼接或访问本地文件系统。
 
 上传与下载由 Rust 直接分块传输：
 

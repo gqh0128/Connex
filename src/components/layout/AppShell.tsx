@@ -20,6 +20,7 @@ import {
 } from "@/features/connections/components/ConnectionSidebar";
 import { SettingsWorkspace } from "@/features/settings/components/SettingsWorkspace";
 import { FilePanel } from "@/features/sftp/components/FilePanel";
+import { useRemoteFiles } from "@/features/sftp/hooks/useRemoteFiles";
 import { HostKeyVerificationDialog } from "@/features/terminal/components/HostKeyVerificationDialog";
 import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorkspace";
 import type { SshSessionsController } from "@/features/terminal/hooks/useSshSessions";
@@ -54,6 +55,8 @@ export function AppShell({
   const connectionSidebarRef = useRef<ConnectionSidebarHandle>(null);
   const { activeTabId, closeSession } = sshSessions;
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const activeSession = sshSessions.activeTab?.snapshot ?? null;
+  const remoteFiles = useRemoteFiles(activeSession);
 
   const shellLayout = useDefaultLayout({
     id: "connex-shell-layout-v2",
@@ -220,7 +223,7 @@ export function AppShell({
                       aria-hidden={!(isWideWorkspace && isFilePanelOpen)}
                       inert={!(isWideWorkspace && isFilePanelOpen)}
                     >
-                      <FilePanel />
+                      <FilePanel session={activeSession} browser={remoteFiles} />
                     </div>
                   </ResizablePanel>
                 </ResizablePanelGroup>
@@ -269,6 +272,8 @@ export function AppShell({
             浏览远程目录并管理文件传输。
           </SheetDescription>
           <FilePanel
+            session={activeSession}
+            browser={remoteFiles}
             className="h-full border-l-0"
             onClose={() => onFilePanelOpenChange(false)}
           />
