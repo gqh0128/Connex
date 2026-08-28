@@ -36,7 +36,7 @@ export function ConnectionListItem({
             variant="ghost"
             size="sm"
             aria-label={`打开连接 ${connection.name}`}
-            className="min-w-0 flex-1 justify-start text-left"
+            className="min-w-0 flex-1 justify-start gap-1 text-left [&_svg]:size-3.5"
             title="双击连接"
             onClick={(event) => {
               if (event.detail === 0) {

@@ -163,11 +163,13 @@ export function SessionTabs({
                       isBusy={presentation.isBusy}
                       label={presentation.label}
                     />
-                    <SquareTerminal
-                      aria-hidden="true"
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                    />
-                    <span className="truncate">{tab.profile.name}</span>
+                    <span className="flex min-w-0 items-center gap-1">
+                      <SquareTerminal
+                        aria-hidden="true"
+                        className="size-3 shrink-0 text-muted-foreground"
+                      />
+                      <span className="truncate">{tab.profile.name}</span>
+                    </span>
                   </button>
 
                   <Tooltip>
