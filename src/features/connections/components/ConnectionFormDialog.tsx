@@ -29,6 +29,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SecretInput } from "@/components/ui/secret-input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getCommandError } from "@/lib/tauri/errors";
 import type {
@@ -36,8 +37,6 @@ import type {
   ConnectionProfile,
   SaveConnectionInput,
 } from "@/types/connections";
-
-import { SecretInput } from "./SecretInput";
 
 type ConnectionFormDialogProps = {
   open: boolean;

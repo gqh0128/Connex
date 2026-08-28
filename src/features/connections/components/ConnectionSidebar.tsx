@@ -34,6 +34,7 @@ type ConnectionSidebarProps = {
 
 export type ConnectionSidebarHandle = {
   openCreateForm: () => void;
+  refreshConnections: () => void;
 };
 
 export const ConnectionSidebar = forwardRef<
@@ -97,7 +98,10 @@ export const ConnectionSidebar = forwardRef<
     setIsFormOpen(true);
   };
 
-  useImperativeHandle(ref, () => ({ openCreateForm: openCreateDialog }));
+  useImperativeHandle(ref, () => ({
+    openCreateForm: openCreateDialog,
+    refreshConnections: () => void refreshConnections(),
+  }));
 
   const saveConnection = (input: SaveConnectionInput) => {
     if (editingConnection) {

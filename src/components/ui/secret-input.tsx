@@ -15,6 +15,8 @@ type SecretInputProps = {
   placeholder: string;
   secretLabel: string;
   ariaInvalid: boolean;
+  disabled?: boolean;
+  autoComplete?: string;
   onChange: (value: string) => void;
   onRevealStored?: () => Promise<string | null>;
 };
@@ -25,6 +27,8 @@ export function SecretInput({
   placeholder,
   secretLabel,
   ariaInvalid,
+  disabled = false,
+  autoComplete = "new-password",
   onChange,
   onRevealStored,
 }: SecretInputProps) {
@@ -42,7 +46,7 @@ export function SecretInput({
   }, []);
 
   const startReveal = async () => {
-    if (isRevealActiveRef.current) {
+    if (disabled || isRevealActiveRef.current) {
       return;
     }
 
@@ -77,14 +81,15 @@ export function SecretInput({
   const Icon = isVisible ? EyeOff : Eye;
 
   return (
-    <InputGroup>
+    <InputGroup data-disabled={disabled}>
       <InputGroupInput
         id={id}
         type={isVisible ? "text" : "password"}
-        autoComplete="new-password"
+        autoComplete={autoComplete}
         value={displayValue}
         placeholder={placeholder}
         aria-invalid={ariaInvalid}
+        disabled={disabled}
         onChange={(event) => {
           setRevealedStoredValue(null);
           onChange(event.target.value);
@@ -96,6 +101,7 @@ export function SecretInput({
             <InputGroupButton
               size="icon-xs"
               aria-label={label}
+              disabled={disabled}
               className="opacity-0 transition-opacity group-focus-within/input-group:opacity-100 group-hover/input-group:opacity-100"
               onPointerEnter={() => void startReveal()}
               onPointerLeave={stopReveal}

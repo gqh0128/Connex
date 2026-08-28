@@ -242,7 +242,11 @@ export function AppShell({
                     <span className="text-sm font-medium">设置</span>
                   </div>
                 </header>
-                <SettingsWorkspace />
+                <SettingsWorkspace
+                  onConnectionsImported={() =>
+                    void connectionSidebarRef.current?.refreshConnections()
+                  }
+                />
               </div>
             ) : null}
           </main>
