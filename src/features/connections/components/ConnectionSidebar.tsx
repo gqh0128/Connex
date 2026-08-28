@@ -41,6 +41,7 @@ import { useConnections } from "../hooks/useConnections";
 
 type ConnectionSidebarProps = {
   isCollapsed: boolean;
+  activeConnectionId: string | null;
   onConnect: (connection: ConnectionProfile) => void;
 };
 
@@ -52,7 +53,7 @@ export type ConnectionSidebarHandle = {
 export const ConnectionSidebar = forwardRef<
   ConnectionSidebarHandle,
   ConnectionSidebarProps
->(function ConnectionSidebar({ isCollapsed, onConnect }, ref) {
+>(function ConnectionSidebar({ isCollapsed, activeConnectionId, onConnect }, ref) {
   const {
     connections,
     isLoading,
@@ -226,6 +227,7 @@ export const ConnectionSidebar = forwardRef<
                   <ConnectionListItem
                     key={connection.id}
                     connection={connection}
+                    isActive={connection.id === activeConnectionId}
                     onConnect={() => onConnect(connection)}
                     onEdit={() => openEditDialog(connection)}
                     onCopyAddress={() => {

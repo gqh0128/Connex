@@ -10,10 +10,12 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types/connections";
 
 type ConnectionListItemProps = {
   connection: ConnectionProfile;
+  isActive: boolean;
   onConnect: () => void;
   onEdit: () => void;
   onCopyAddress: () => void;
@@ -22,6 +24,7 @@ type ConnectionListItemProps = {
 
 export function ConnectionListItem({
   connection,
+  isActive,
   onConnect,
   onEdit,
   onCopyAddress,
@@ -30,12 +33,19 @@ export function ConnectionListItem({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className="group flex min-w-0 items-center rounded-md transition-colors hover:bg-accent focus-within:bg-accent data-[state=open]:bg-accent">
+        <div
+          data-active={isActive}
+          className={cn(
+            "group flex min-w-0 items-center rounded-md transition-colors hover:bg-accent focus-within:bg-accent data-[state=open]:bg-accent",
+            isActive && "bg-accent text-accent-foreground",
+          )}
+        >
           <Button
             type="button"
             variant="ghost"
             size="sm"
             aria-label={`打开连接 ${connection.name}`}
+            aria-current={isActive ? "true" : undefined}
             className="min-w-0 flex-1 justify-start gap-1 text-left [&_svg]:size-3.5"
             title="双击连接"
             onClick={(event) => {
@@ -45,7 +55,10 @@ export function ConnectionListItem({
             }}
             onDoubleClick={onConnect}
           >
-            <SquareTerminal data-icon="inline-start" />
+            <SquareTerminal
+              data-icon="inline-start"
+              className={cn(isActive && "text-primary")}
+            />
             <span className="truncate">{connection.name}</span>
           </Button>
           <Tooltip>

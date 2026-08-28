@@ -202,6 +202,11 @@ export function AppShell({
           <ConnectionSidebar
             ref={connectionSidebarRef}
             isCollapsed={isSidebarCollapsed}
+            activeConnectionId={
+              activeView === "workspace"
+                ? (sshSessions.activeTab?.profile.id ?? null)
+                : null
+            }
             onConnect={(connection) => {
               sshSessions.openSession(connection);
               onViewChange("workspace");
