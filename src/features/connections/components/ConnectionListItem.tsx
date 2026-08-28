@@ -1,4 +1,4 @@
-import { KeyRound, Pencil, Server } from "lucide-react";
+import { Pencil, Server } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -23,33 +23,21 @@ export function ConnectionListItem({
       type="button"
       variant="ghost"
       size={isCollapsed ? "icon" : "sm"}
-      aria-label={isCollapsed ? `连接 ${connection.name}` : undefined}
+      aria-label={`连接 ${connection.name}`}
       onClick={onConnect}
       className={cn(
         "min-w-0",
-        isCollapsed ? null : "h-auto w-full justify-start px-2 py-2 text-left",
+        isCollapsed ? null : "h-9 flex-1 justify-start px-2 text-left",
       )}
     >
-      <Server data-icon="inline-start" />
-      {isCollapsed ? null : (
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium">{connection.name}</span>
-          <span className="truncate text-[11px] text-muted-foreground">
-            {connection.username}@{connection.host}:{connection.port}
-          </span>
-        </div>
-      )}
-      {!isCollapsed ? (
-        connection.authenticationMethod === "privateKey" ? (
-          <KeyRound data-icon="inline-end" aria-label="私钥认证" />
-        ) : null
-      ) : null}
+      {isCollapsed ? <Server data-icon="inline-start" /> : null}
+      {isCollapsed ? null : <span className="truncate">{connection.name}</span>}
     </Button>
   );
 
   if (!isCollapsed) {
     return (
-      <div className="group relative min-w-0">
+      <div className="group flex min-w-0 items-center rounded-md transition-colors hover:bg-accent focus-within:bg-accent">
         {content}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -58,7 +46,7 @@ export function ConnectionListItem({
               variant="ghost"
               size="icon-sm"
               aria-label={`编辑连接 ${connection.name}`}
-              className="absolute top-1/2 right-1.5 -translate-y-1/2 bg-sidebar opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+              className="mr-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
               onClick={onEdit}
             >
               <Pencil data-icon="inline-start" />
@@ -73,9 +61,7 @@ export function ConnectionListItem({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{content}</TooltipTrigger>
-      <TooltipContent side="right">
-        连接 {connection.name} · {connection.username}@{connection.host}
-      </TooltipContent>
+      <TooltipContent side="right">连接 {connection.name}</TooltipContent>
     </Tooltip>
   );
 }

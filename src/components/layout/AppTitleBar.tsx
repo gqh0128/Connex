@@ -1,6 +1,5 @@
 import { Settings } from "lucide-react";
 
-import { ConnexMark } from "@/components/brand/ConnexMark";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TransferPopover } from "@/features/transfers/components/TransferPopover";
@@ -34,9 +33,8 @@ export function AppTitleBar({
 
       <div
         data-tauri-drag-region={isMacPlatform ? true : undefined}
-        className="pointer-events-none flex h-full min-w-0 items-center gap-2.5"
+        className="pointer-events-none flex h-full min-w-0 items-center gap-2"
       >
-        <ConnexMark size="compact" />
         <span className="text-sm font-semibold tracking-tight">Connex</span>
         <span className="px-1 text-muted-foreground/60">/</span>
         <span className="max-w-64 truncate text-xs text-muted-foreground">
