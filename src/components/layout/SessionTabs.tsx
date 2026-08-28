@@ -108,7 +108,7 @@ export function SessionTabs({
   }, [activePageId, activeTabId]);
 
   return (
-    <header className="flex h-9 shrink-0 items-stretch border-b bg-surface">
+    <header className="flex h-8 shrink-0 items-stretch border-b bg-surface">
       <div className="flex shrink-0 items-center gap-0.5 px-1">
         <SidebarToggleButton
           isCollapsed={isSidebarCollapsed}
@@ -173,7 +173,7 @@ export function SessionTabs({
                         size="icon-sm"
                         aria-label={`关闭 ${tab.profile.name} 标签页`}
                         className={cn(
-                          "absolute top-1 right-1",
+                          "absolute top-0.5 right-1",
                           isActive
                             ? "opacity-100"
                             : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
@@ -263,7 +263,7 @@ export function SessionTabs({
                         size="icon-sm"
                         aria-label={`关闭 ${tab.label} 标签页`}
                         className={cn(
-                          "absolute top-1 right-1",
+                          "absolute top-0.5 right-1",
                           isActive
                             ? "opacity-100"
                             : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
