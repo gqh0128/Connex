@@ -154,6 +154,16 @@ button:not(:disabled) {
   cursor: pointer;
 }
 
+.connex-terminal .xterm {
+  height: 100%;
+}
+
+.connex-terminal .xterm-viewport {
+  background-color: var(--terminal) !important;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 38%, transparent)
+    transparent;
+}
+
 ::selection {
   background: color-mix(in oklab, var(--primary) 24%, transparent);
 }

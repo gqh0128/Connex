@@ -1,5 +1,5 @@
 import { Settings2 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDefaultLayout, usePanelRef, type PanelSize } from "react-resizable-panels";
 
 import {
@@ -13,11 +13,17 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ConnectionSidebar } from "@/features/connections/components/ConnectionSidebar";
+import {
+  ConnectionSidebar,
+  type ConnectionSidebarHandle,
+} from "@/features/connections/components/ConnectionSidebar";
 import { SettingsWorkspace } from "@/features/settings/components/SettingsWorkspace";
 import { FilePanel } from "@/features/sftp/components/FilePanel";
+import { HostKeyVerificationDialog } from "@/features/terminal/components/HostKeyVerificationDialog";
 import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorkspace";
+import type { SshSessionsController } from "@/features/terminal/hooks/useSshSessions";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { cn } from "@/lib/utils";
 import type { AppView } from "@/types/navigation";
 
 import { AppTitleBar } from "./AppTitleBar";
@@ -30,6 +36,7 @@ type AppShellProps = {
   onFilePanelOpenChange: (isOpen: boolean) => void;
   activeView: AppView;
   onViewChange: (view: AppView) => void;
+  sshSessions: SshSessionsController;
 };
 
 export function AppShell({
@@ -37,9 +44,13 @@ export function AppShell({
   onFilePanelOpenChange,
   activeView,
   onViewChange,
+  sshSessions,
 }: AppShellProps) {
   const isWideWorkspace = useMediaQuery(WIDE_WORKSPACE_QUERY);
   const sidebarPanelRef = usePanelRef();
+  const filePanelRef = usePanelRef();
+  const connectionSidebarRef = useRef<ConnectionSidebarHandle>(null);
+  const { activeTabId, closeSession } = sshSessions;
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const shellLayout = useDefaultLayout({
@@ -68,9 +79,57 @@ export function AppShell({
     sidebarPanelRef.current?.collapse();
   };
 
+  const openNewConnection = useCallback(() => {
+    onViewChange("workspace");
+    connectionSidebarRef.current?.openCreateForm();
+  }, [onViewChange]);
+
+  useEffect(() => {
+    const filePanel = filePanelRef.current;
+    if (!filePanel) {
+      return;
+    }
+
+    if (isWideWorkspace && isFilePanelOpen) {
+      filePanel.expand();
+    } else {
+      filePanel.collapse();
+    }
+  }, [filePanelRef, isFilePanelOpen, isWideWorkspace]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+        return;
+      }
+
+      if (event.key.toLocaleLowerCase() === "n") {
+        event.preventDefault();
+        openNewConnection();
+        return;
+      }
+
+      if (
+        event.key.toLocaleLowerCase() === "w" &&
+        activeView === "workspace" &&
+        activeTabId
+      ) {
+        event.preventDefault();
+        closeSession(activeTabId);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeTabId, activeView, closeSession, openNewConnection]);
+
   return (
     <div className="flex h-svh flex-col overflow-hidden bg-background text-foreground">
-      <AppTitleBar activeView={activeView} onViewChange={onViewChange} />
+      <AppTitleBar
+        activeView={activeView}
+        activeContextLabel={sshSessions.activeTab?.profile.name ?? null}
+        onViewChange={onViewChange}
+      />
 
       <ResizablePanelGroup
         orientation="horizontal"
@@ -90,62 +149,97 @@ export function AppShell({
           onResize={handleSidebarResize}
         >
           <ConnectionSidebar
+            ref={connectionSidebarRef}
             isCollapsed={isSidebarCollapsed}
             onCollapseToggle={handleSidebarToggle}
             activeView={activeView}
             onViewChange={onViewChange}
+            onConnect={(connection, credentials) => {
+              sshSessions.openSession(connection, credentials);
+              onViewChange("workspace");
+            }}
           />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="workspace" minSize={560}>
-          <main className="flex h-full min-w-0 flex-col bg-workspace">
+          <main className="relative h-full min-w-0 bg-workspace">
+            <div
+              aria-hidden={activeView !== "workspace"}
+              className={cn(
+                "absolute inset-0 flex min-w-0 flex-col",
+                activeView === "workspace"
+                  ? "visible"
+                  : "invisible pointer-events-none",
+              )}
+            >
+              <SessionTabs
+                tabs={sshSessions.tabs}
+                activeTabId={sshSessions.activeTabId}
+                isFilePanelOpen={isFilePanelOpen}
+                onSelect={sshSessions.selectSession}
+                onClose={sshSessions.closeSession}
+                onNewConnection={openNewConnection}
+                onFilePanelToggle={() => onFilePanelOpenChange(!isFilePanelOpen)}
+              />
+
+              <div className="min-h-0 flex-1">
+                <ResizablePanelGroup
+                  orientation="horizontal"
+                  defaultLayout={fileLayout.defaultLayout}
+                  onLayoutChanged={fileLayout.onLayoutChanged}
+                >
+                  <ResizablePanel id="terminal" minSize={560}>
+                    <TerminalWorkspace
+                      tabs={sshSessions.tabs}
+                      activeTabId={sshSessions.activeTabId}
+                      isWorkspaceVisible={activeView === "workspace"}
+                      onNewConnection={openNewConnection}
+                      onStart={sshSessions.startSession}
+                      onRegisterOutput={sshSessions.registerOutputHandler}
+                      onInput={sshSessions.writeInput}
+                      onResize={sshSessions.resizeSession}
+                      onClose={sshSessions.closeSession}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle
+                    className={cn(!(isWideWorkspace && isFilePanelOpen) && "hidden")}
+                  />
+                  <ResizablePanel
+                    id="files"
+                    panelRef={filePanelRef}
+                    defaultSize={320}
+                    minSize={280}
+                    maxSize={520}
+                    collapsedSize={0}
+                    collapsible
+                    groupResizeBehavior="preserve-pixel-size"
+                  >
+                    <div
+                      className="h-full"
+                      aria-hidden={!(isWideWorkspace && isFilePanelOpen)}
+                      inert={!(isWideWorkspace && isFilePanelOpen)}
+                    >
+                      <FilePanel />
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </div>
+            </div>
+
             {activeView === "settings" ? (
-              <>
+              <div className="absolute inset-0 flex min-w-0 flex-col bg-workspace">
                 <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-surface px-4">
                   <Settings2 className="size-4 text-muted-foreground" />
                   <span className="text-sm font-medium">设置</span>
                 </header>
                 <SettingsWorkspace />
-              </>
-            ) : (
-              <>
-                <SessionTabs
-                  isFilePanelOpen={isFilePanelOpen}
-                  onFilePanelToggle={() => onFilePanelOpenChange(!isFilePanelOpen)}
-                />
-
-                <div className="min-h-0 flex-1">
-                  {isWideWorkspace && isFilePanelOpen ? (
-                    <ResizablePanelGroup
-                      orientation="horizontal"
-                      defaultLayout={fileLayout.defaultLayout}
-                      onLayoutChanged={fileLayout.onLayoutChanged}
-                    >
-                      <ResizablePanel id="terminal" minSize={560}>
-                        <TerminalWorkspace />
-                      </ResizablePanel>
-                      <ResizableHandle />
-                      <ResizablePanel
-                        id="files"
-                        defaultSize={320}
-                        minSize={280}
-                        maxSize={520}
-                        groupResizeBehavior="preserve-pixel-size"
-                      >
-                        <FilePanel />
-                      </ResizablePanel>
-                    </ResizablePanelGroup>
-                  ) : (
-                    <TerminalWorkspace />
-                  )}
-                </div>
-              </>
-            )}
+              </div>
+            ) : null}
           </main>
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      <StatusBar />
+      <StatusBar activeTab={sshSessions.activeTab} />
 
       <Sheet
         open={activeView === "workspace" && !isWideWorkspace && isFilePanelOpen}
@@ -166,6 +260,12 @@ export function AppShell({
           />
         </SheetContent>
       </Sheet>
+
+      <HostKeyVerificationDialog
+        key={sshSessions.hostKeyTab?.localId ?? "host-key"}
+        tab={sshSessions.hostKeyTab}
+        onDecision={sshSessions.decideHostKey}
+      />
     </div>
   );
 }

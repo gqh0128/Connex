@@ -1,4 +1,4 @@
-import { KeyRound, Server } from "lucide-react";
+import { KeyRound, Pencil, Server } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -8,12 +8,14 @@ import type { ConnectionProfile } from "@/types/connections";
 type ConnectionListItemProps = {
   connection: ConnectionProfile;
   isCollapsed: boolean;
+  onConnect: () => void;
   onEdit: () => void;
 };
 
 export function ConnectionListItem({
   connection,
   isCollapsed,
+  onConnect,
   onEdit,
 }: ConnectionListItemProps) {
   const content = (
@@ -21,8 +23,8 @@ export function ConnectionListItem({
       type="button"
       variant="ghost"
       size={isCollapsed ? "icon" : "sm"}
-      aria-label={isCollapsed ? `编辑连接 ${connection.name}` : undefined}
-      onClick={onEdit}
+      aria-label={isCollapsed ? `连接 ${connection.name}` : undefined}
+      onClick={onConnect}
       className={cn(
         "min-w-0",
         isCollapsed ? null : "h-auto w-full justify-start px-2 py-2 text-left",
@@ -37,21 +39,42 @@ export function ConnectionListItem({
           </span>
         </div>
       )}
-      {!isCollapsed && connection.authenticationMethod === "privateKey" ? (
-        <KeyRound data-icon="inline-end" aria-label="私钥认证" />
+      {!isCollapsed ? (
+        connection.authenticationMethod === "privateKey" ? (
+          <KeyRound data-icon="inline-end" aria-label="私钥认证" />
+        ) : null
       ) : null}
     </Button>
   );
 
   if (!isCollapsed) {
-    return content;
+    return (
+      <div className="group relative min-w-0">
+        {content}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`编辑连接 ${connection.name}`}
+              className="absolute top-1/2 right-1.5 -translate-y-1/2 bg-sidebar opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+              onClick={onEdit}
+            >
+              <Pencil data-icon="inline-start" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>编辑连接</TooltipContent>
+        </Tooltip>
+      </div>
+    );
   }
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>{content}</TooltipTrigger>
       <TooltipContent side="right">
-        {connection.name} · {connection.username}@{connection.host}
+        连接 {connection.name} · {connection.username}@{connection.host}
       </TooltipContent>
     </Tooltip>
   );

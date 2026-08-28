@@ -8,6 +8,7 @@ import type { AppView } from "@/types/navigation";
 
 type AppTitleBarProps = {
   activeView: AppView;
+  activeContextLabel: string | null;
   onViewChange: (view: AppView) => void;
 };
 
@@ -15,10 +16,14 @@ function isMacOS() {
   return /Macintosh|Mac OS X/.test(window.navigator.userAgent);
 }
 
-export function AppTitleBar({ activeView, onViewChange }: AppTitleBarProps) {
+export function AppTitleBar({
+  activeView,
+  activeContextLabel,
+  onViewChange,
+}: AppTitleBarProps) {
   const isMacPlatform = isMacOS();
   const isSettingsOpen = activeView === "settings";
-  const activeLabel = isSettingsOpen ? "设置" : "欢迎";
+  const activeLabel = isSettingsOpen ? "设置" : (activeContextLabel ?? "欢迎");
 
   return (
     <header

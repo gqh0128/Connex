@@ -8,7 +8,13 @@ import {
   Server,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +35,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile, SaveConnectionInput } from "@/types/connections";
 import type { AppView } from "@/types/navigation";
+import type { SessionCredentials } from "@/types/sessions";
 
+import { ConnectionCredentialsDialog } from "./ConnectionCredentialsDialog";
 import { ConnectionFormSheet } from "./ConnectionFormSheet";
 import { ConnectionListItem } from "./ConnectionListItem";
 import { useConnections } from "../hooks/useConnections";
@@ -39,14 +47,20 @@ type ConnectionSidebarProps = {
   onCollapseToggle: () => void;
   activeView: AppView;
   onViewChange: (view: AppView) => void;
+  onConnect: (connection: ConnectionProfile, credentials: SessionCredentials) => void;
 };
 
-export function ConnectionSidebar({
-  isCollapsed,
-  onCollapseToggle,
-  activeView,
-  onViewChange,
-}: ConnectionSidebarProps) {
+export type ConnectionSidebarHandle = {
+  openCreateForm: () => void;
+};
+
+export const ConnectionSidebar = forwardRef<
+  ConnectionSidebarHandle,
+  ConnectionSidebarProps
+>(function ConnectionSidebar(
+  { isCollapsed, onCollapseToggle, activeView, onViewChange, onConnect },
+  ref,
+) {
   const {
     connections,
     isLoading,
@@ -62,6 +76,8 @@ export function ConnectionSidebar({
   const [editingConnection, setEditingConnection] = useState<ConnectionProfile | null>(
     null,
   );
+  const [credentialConnection, setCredentialConnection] =
+    useState<ConnectionProfile | null>(null);
   const [formKey, setFormKey] = useState(0);
   const visibleConnections = useMemo(() => {
     const scopedConnections =
@@ -92,6 +108,17 @@ export function ConnectionSidebar({
     setEditingConnection(connection);
     setFormKey((current) => current + 1);
     setIsFormOpen(true);
+  };
+
+  useImperativeHandle(ref, () => ({ openCreateForm: openCreateSheet }));
+
+  const startConnection = (connection: ConnectionProfile) => {
+    if (connection.authenticationMethod === "agent") {
+      onConnect(connection, { password: null, privateKeyPassphrase: null });
+      return;
+    }
+
+    setCredentialConnection(connection);
   };
 
   const saveConnection = (input: SaveConnectionInput) => {
@@ -208,6 +235,7 @@ export function ConnectionSidebar({
                       key={connection.id}
                       connection={connection}
                       isCollapsed={isCollapsed}
+                      onConnect={() => startConnection(connection)}
                       onEdit={() => openEditSheet(connection)}
                     />
                   ))}
@@ -246,9 +274,25 @@ export function ConnectionSidebar({
         onSubmit={saveConnection}
         onDelete={editingConnection ? () => remove(editingConnection.id) : undefined}
       />
+
+      <ConnectionCredentialsDialog
+        key={credentialConnection?.id ?? "credentials"}
+        connection={credentialConnection}
+        open={Boolean(credentialConnection)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCredentialConnection(null);
+          }
+        }}
+        onConnect={(credentials) => {
+          if (credentialConnection) {
+            onConnect(credentialConnection, credentials);
+          }
+        }}
+      />
     </>
   );
-}
+});
 
 type IconActionProps = {
   label: string;

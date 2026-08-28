@@ -46,6 +46,10 @@ React 不直接访问网络、数据库、凭据或任意本地路径。Rust 是
 
 全局状态库暂不引入。连接与传输状态最终来自 Rust manager；前端先使用局部 state 和 feature hooks。等多个页面确实需要规范化共享数据时，再评估轻量 store。
 
+SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只负责标签和 xterm 实例绑定，Rust 返回的 session ID 才用于后续控制命令。密码和私钥口令仅在发起连接前暂存于 hook 的内存引用中，首次调用 `start_ssh_session` 前立即移除；不得放入可持久化 state、日志或连接配置。
+
+每个会话标签对应一个长期存活的 xterm 实例。切换标签、打开设置和展开或收起文件面板只改变可见性或面板尺寸，不能卸载仍存在的终端。React 开发模式重复挂载时，会话 hook 必须保证同一标签只启动一次 Rust 会话，并让后挂载的终端重新接管输出处理器。
+
 ## 4. Rust 架构
 
 Rust 端采用模块化单体：
@@ -77,7 +81,7 @@ IPC 分为控制面和数据面。
 - 传输进度和结束事件
 - 大目录的分批加载结果
 
-终端输出使用 `Channel<InvokeResponseBody>` 的 raw bytes，前端直接写入 xterm.js。输入在前端按极短时间窗口聚合为 `Uint8Array` 后提交，不能为每个字符构造业务 JSON。断线、认证失败等状态通过独立结构化事件发送，不能混入终端字节流。
+终端输出使用 `Channel<InvokeResponseBody>` 的 raw bytes，前端直接写入 xterm.js。输入在前端按最多约 `8ms` 或 `4 KiB` 聚合为 `Uint8Array`，并通过串行 Promise 链保持提交顺序，不能为每个字符构造业务 JSON。断线、认证失败等状态通过独立结构化事件发送，不能混入终端字节流。
 
 所有 command 名称使用 `snake_case`，JSON 字段使用 `camelCase`。每个前端调用都由 `src/lib/tauri` 中的函数封装，组件不依赖命令字符串。
 
@@ -101,7 +105,7 @@ idle → connecting → verifyingHost → authenticating → connected
 
 `OpenSftp` 会在传输 manager 开始实现时加入同一控制队列，并通过一次性响应通道返回已经初始化的 SFTP session；当前 SSH 基线不提前暴露未被消费的 SFTP handle。
 
-打开 Shell 前先请求远程 PTY，默认终端类型为 `xterm-256color`。初始行列数来自 xterm FitAddon，容器变化后发送 resize。终端输出背压需要在技术验证中用持续大输出测试，不能采用无界内存队列。
+打开 Shell 前先请求远程 PTY，默认终端类型为 `xterm-256color`。初始行列数优先来自 xterm FitAddon；如果 WebKit 首帧布局尚未稳定，则先使用 xterm 默认行列启动，首个有效 ResizeObserver 结果立即发送 resize，不能让连接生命周期等待布局事件。后续容器变化继续发送 resize。终端输出背压需要在技术验证中用持续大输出测试，不能采用无界内存队列。
 
 SSH transport 固定使用 `russh 0.63.x` 的 `ring + rsa + flate2` 特性，避免引入系统 OpenSSL 和重量更大的默认 `aws-lc` 构建链；SFTP 使用与 SSH channel stream 解耦的 `russh-sftp 2.4.x`。连接阶段设置 15 秒 TCP 超时；主机确认和认证分别最多等待 120 秒。Rust 到 Tauri Channel 之间还有容量为 64 的统一事件队列，终端输出进入队列时自然施加背压。
 

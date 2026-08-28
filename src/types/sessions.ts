@@ -52,6 +52,11 @@ export type StartSshSessionInput = {
   pixelHeight: number;
 };
 
+export type SessionCredentials = Pick<
+  StartSshSessionInput,
+  "password" | "privateKeyPassphrase"
+>;
+
 export type ResizeSshSessionInput = Pick<
   StartSshSessionInput,
   "columns" | "rows" | "pixelWidth" | "pixelHeight"
