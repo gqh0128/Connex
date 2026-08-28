@@ -17,10 +17,10 @@ import { ConnectionSidebar } from "@/features/connections/components/ConnectionS
 import { SettingsWorkspace } from "@/features/settings/components/SettingsWorkspace";
 import { FilePanel } from "@/features/sftp/components/FilePanel";
 import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorkspace";
-import { TransferDrawer } from "@/features/transfers/components/TransferDrawer";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { AppView } from "@/types/navigation";
 
+import { AppTitleBar } from "./AppTitleBar";
 import { SessionTabs } from "./SessionTabs";
 import { StatusBar } from "./StatusBar";
 import { WIDE_WORKSPACE_QUERY } from "./layoutConstants";
@@ -40,9 +40,7 @@ export function AppShell({
 }: AppShellProps) {
   const isWideWorkspace = useMediaQuery(WIDE_WORKSPACE_QUERY);
   const sidebarPanelRef = usePanelRef();
-  const transferPanelRef = usePanelRef();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isTransferDrawerExpanded, setIsTransferDrawerExpanded] = useState(false);
 
   const shellLayout = useDefaultLayout({
     id: "connex-shell-layout",
@@ -54,12 +52,6 @@ export function AppShell({
     panelIds: ["terminal", "files"],
     storage: window.localStorage,
   });
-  const transferLayout = useDefaultLayout({
-    id: "connex-transfer-layout",
-    panelIds: ["session", "transfers"],
-    storage: window.localStorage,
-  });
-
   const handleSidebarResize = (size: PanelSize) => {
     const isCollapsed = size.inPixels <= 64;
     setIsSidebarCollapsed((wasCollapsed) =>
@@ -76,24 +68,10 @@ export function AppShell({
     sidebarPanelRef.current?.collapse();
   };
 
-  const handleTransferResize = (size: PanelSize) => {
-    const isExpanded = size.inPixels > 40;
-    setIsTransferDrawerExpanded((wasExpanded) =>
-      wasExpanded === isExpanded ? wasExpanded : isExpanded,
-    );
-  };
-
-  const handleTransferToggle = () => {
-    if (transferPanelRef.current?.isCollapsed()) {
-      transferPanelRef.current.resize(176);
-      return;
-    }
-
-    transferPanelRef.current?.collapse();
-  };
-
   return (
     <div className="flex h-svh flex-col overflow-hidden bg-background text-foreground">
+      <AppTitleBar activeView={activeView} onViewChange={onViewChange} />
+
       <ResizablePanelGroup
         orientation="horizontal"
         className="min-h-0 flex-1"
@@ -136,55 +114,31 @@ export function AppShell({
                   onFilePanelToggle={() => onFilePanelOpenChange(!isFilePanelOpen)}
                 />
 
-                <ResizablePanelGroup
-                  orientation="vertical"
-                  className="min-h-0 flex-1"
-                  defaultLayout={transferLayout.defaultLayout}
-                  onLayoutChanged={transferLayout.onLayoutChanged}
-                >
-                  <ResizablePanel id="session" minSize={280}>
-                    {isWideWorkspace && isFilePanelOpen ? (
-                      <ResizablePanelGroup
-                        orientation="horizontal"
-                        defaultLayout={fileLayout.defaultLayout}
-                        onLayoutChanged={fileLayout.onLayoutChanged}
+                <div className="min-h-0 flex-1">
+                  {isWideWorkspace && isFilePanelOpen ? (
+                    <ResizablePanelGroup
+                      orientation="horizontal"
+                      defaultLayout={fileLayout.defaultLayout}
+                      onLayoutChanged={fileLayout.onLayoutChanged}
+                    >
+                      <ResizablePanel id="terminal" minSize={560}>
+                        <TerminalWorkspace />
+                      </ResizablePanel>
+                      <ResizableHandle />
+                      <ResizablePanel
+                        id="files"
+                        defaultSize={320}
+                        minSize={280}
+                        maxSize={520}
+                        groupResizeBehavior="preserve-pixel-size"
                       >
-                        <ResizablePanel id="terminal" minSize={560}>
-                          <TerminalWorkspace />
-                        </ResizablePanel>
-                        <ResizableHandle />
-                        <ResizablePanel
-                          id="files"
-                          defaultSize={320}
-                          minSize={280}
-                          maxSize={520}
-                          groupResizeBehavior="preserve-pixel-size"
-                        >
-                          <FilePanel />
-                        </ResizablePanel>
-                      </ResizablePanelGroup>
-                    ) : (
-                      <TerminalWorkspace />
-                    )}
-                  </ResizablePanel>
-                  <ResizableHandle />
-                  <ResizablePanel
-                    id="transfers"
-                    panelRef={transferPanelRef}
-                    defaultSize={32}
-                    minSize={120}
-                    maxSize="40%"
-                    collapsedSize={32}
-                    collapsible
-                    groupResizeBehavior="preserve-pixel-size"
-                    onResize={handleTransferResize}
-                  >
-                    <TransferDrawer
-                      isExpanded={isTransferDrawerExpanded}
-                      onToggle={handleTransferToggle}
-                    />
-                  </ResizablePanel>
-                </ResizablePanelGroup>
+                        <FilePanel />
+                      </ResizablePanel>
+                    </ResizablePanelGroup>
+                  ) : (
+                    <TerminalWorkspace />
+                  )}
+                </div>
               </>
             )}
           </main>

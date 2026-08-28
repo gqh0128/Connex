@@ -5,12 +5,10 @@ import {
   Plus,
   Search,
   Server,
-  Settings,
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { ConnexMark } from "@/components/brand/ConnexMark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +24,6 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { AppView } from "@/types/navigation";
@@ -46,32 +43,8 @@ export function ConnectionSidebar({
 }: ConnectionSidebarProps) {
   return (
     <aside className="flex h-full min-h-0 flex-col bg-sidebar">
-      <div
-        className={cn(
-          "flex h-14 shrink-0 items-center gap-2.5",
-          isCollapsed ? "justify-center px-2" : "px-3.5",
-        )}
-      >
-        <ConnexMark />
-        {isCollapsed ? (
-          <span className="sr-only">Connex</span>
-        ) : (
-          <>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold tracking-tight">Connex</div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                SSH workspace
-              </div>
-            </div>
-            <IconAction label="收起连接侧栏" onClick={onCollapseToggle}>
-              <PanelLeftClose data-icon="inline-start" />
-            </IconAction>
-          </>
-        )}
-      </div>
-
       {isCollapsed ? (
-        <div className="flex flex-col items-center gap-2 px-2 pb-3">
+        <div className="flex shrink-0 flex-col items-center gap-2 px-2 py-2">
           <IconAction label="新建 SSH 连接" variant="default">
             <Plus data-icon="inline-start" />
           </IconAction>
@@ -80,7 +53,7 @@ export function ConnectionSidebar({
           </IconAction>
         </div>
       ) : (
-        <div className="flex items-center gap-2 px-3 pb-3">
+        <div className="flex h-14 shrink-0 items-center gap-2 px-3">
           <InputGroup size="sm">
             <InputGroupAddon>
               <Search />
@@ -90,6 +63,9 @@ export function ConnectionSidebar({
           <Button type="button" size="icon" aria-label="新建 SSH 连接">
             <Plus data-icon="inline-start" />
           </Button>
+          <IconAction label="收起连接侧栏" onClick={onCollapseToggle}>
+            <PanelLeftClose data-icon="inline-start" />
+          </IconAction>
         </div>
       )}
 
@@ -136,17 +112,6 @@ export function ConnectionSidebar({
           )}
         </nav>
       </ScrollArea>
-
-      <Separator />
-      <div className={cn("p-2", isCollapsed && "px-2")}>
-        <SidebarItem
-          icon={Settings}
-          label="设置"
-          isCollapsed={isCollapsed}
-          isActive={activeView === "settings"}
-          onClick={() => onViewChange("settings")}
-        />
-      </div>
     </aside>
   );
 }
