@@ -291,7 +291,7 @@ function SidebarCollapseButton({ isCollapsed, onToggle }: SidebarCollapseButtonP
           variant="outline"
           size="icon-sm"
           aria-label={label}
-          className="absolute top-1/2 left-1 z-10 -translate-y-1/2"
+          className="absolute top-1/2 left-1 z-10 h-10 -translate-y-1/2"
           onClick={onToggle}
         >
           <Icon data-icon="inline-start" />
