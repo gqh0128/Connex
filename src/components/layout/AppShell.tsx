@@ -160,7 +160,7 @@ export function AppShell({
           />
         </ResizablePanel>
         <ResizableHandle />
-        <ResizablePanel id="workspace" minSize={560}>
+        <ResizablePanel id="workspace" minSize={580}>
           <main className="relative h-full min-w-0 bg-workspace">
             <SidebarCollapseButton
               isCollapsed={isSidebarCollapsed}
@@ -186,7 +186,7 @@ export function AppShell({
                 onFilePanelToggle={() => onFilePanelOpenChange(!isFilePanelOpen)}
               />
 
-              <div className="min-h-0 flex-1">
+              <div className="min-h-0 flex-1 bg-terminal pl-5">
                 <ResizablePanelGroup
                   orientation="horizontal"
                   defaultLayout={fileLayout.defaultLayout}
@@ -236,7 +236,9 @@ export function AppShell({
                   <Settings2 className="size-4 text-muted-foreground" />
                   <span className="text-sm font-medium">设置</span>
                 </header>
-                <SettingsWorkspace />
+                <div className="flex min-h-0 flex-1 pl-5">
+                  <SettingsWorkspace />
+                </div>
               </div>
             ) : null}
           </main>
@@ -291,7 +293,7 @@ function SidebarCollapseButton({ isCollapsed, onToggle }: SidebarCollapseButtonP
           variant="outline"
           size="icon-sm"
           aria-label={label}
-          className="absolute top-1/2 left-1 z-10 h-10 -translate-y-1/2"
+          className="absolute top-1/2 left-0 z-10 h-10 w-5 -translate-y-1/2"
           onClick={onToggle}
         >
           <Icon data-icon="inline-start" />
