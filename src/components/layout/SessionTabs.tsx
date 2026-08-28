@@ -1,4 +1,5 @@
 import { Files, LoaderCircle, Plus, Settings2, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -48,6 +49,41 @@ export function SessionTabs({
   onNewConnection,
   onFilePanelToggle,
 }: SessionTabsProps) {
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const tabList = tabListRef.current;
+    const activeTab = tabList?.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    if (!tabList || !activeTab) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const listBounds = tabList.getBoundingClientRect();
+      const tabBounds = activeTab.getBoundingClientRect();
+      let nextScrollLeft: number | null = null;
+
+      if (tabBounds.left < listBounds.left) {
+        nextScrollLeft = tabList.scrollLeft + tabBounds.left - listBounds.left;
+      } else if (tabBounds.right > listBounds.right) {
+        nextScrollLeft = tabList.scrollLeft + tabBounds.right - listBounds.right;
+      }
+
+      if (nextScrollLeft !== null) {
+        tabList.scrollTo({
+          left: nextScrollLeft,
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth",
+        });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [activePageId, activeTabId]);
+
   return (
     <header className="flex h-9 shrink-0 items-stretch border-b bg-surface">
       <div className="flex shrink-0 items-center gap-0.5 px-1">
@@ -73,6 +109,7 @@ export function SessionTabs({
       <Separator orientation="vertical" />
 
       <div
+        ref={tabListRef}
         className="flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
       >
