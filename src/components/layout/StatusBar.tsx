@@ -1,4 +1,4 @@
-import { LockKeyhole } from "lucide-react";
+import { ArrowDownToLine, LockKeyhole } from "lucide-react";
 
 export function StatusBar() {
   return (
@@ -8,6 +8,9 @@ export function StatusBar() {
         未连接
       </div>
       <div className="flex items-center gap-3">
+        <span className="flex items-center gap-1.5">
+          <ArrowDownToLine className="size-3" />0 个传输
+        </span>
         <span className="flex items-center gap-1.5">
           <LockKeyhole className="size-3" />
           本地安全存储

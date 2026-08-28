@@ -41,6 +41,9 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     setModeState(nextMode);
 
     const nextTheme = applyTheme(nextMode);
+    if (nextMode === "system") {
+      setSystemTheme(nextTheme);
+    }
     void syncNativeTheme(nextTheme);
   }, []);
 

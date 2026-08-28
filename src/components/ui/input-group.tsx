@@ -8,14 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+function InputGroup({
+  className,
+  size = "default",
+  ...props
+}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
   return (
     <div
       data-slot="input-group"
+      data-size={size}
       role="group"
       className={cn(
         "group/input-group relative flex w-full items-center rounded-md border border-input bg-background/60 shadow-xs transition-[color,box-shadow] outline-none",
         "h-9 min-w-0 has-[>textarea]:h-auto",
+        "data-[size=sm]:h-8 data-[size=sm]:[&_[data-slot=input-group-control]]:h-8 data-[size=sm]:[&_[data-slot=input-group-control]]:text-xs",
 
         // Variants based on alignment.
         "has-[>[data-align=inline-start]]:[&>input]:pl-2",

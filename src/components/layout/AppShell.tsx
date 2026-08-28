@@ -1,3 +1,4 @@
+import { Settings2 } from "lucide-react";
 import { useState } from "react";
 import { useDefaultLayout, usePanelRef, type PanelSize } from "react-resizable-panels";
 
@@ -13,10 +14,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ConnectionSidebar } from "@/features/connections/components/ConnectionSidebar";
+import { SettingsWorkspace } from "@/features/settings/components/SettingsWorkspace";
 import { FilePanel } from "@/features/sftp/components/FilePanel";
 import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorkspace";
 import { TransferDrawer } from "@/features/transfers/components/TransferDrawer";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import type { AppView } from "@/types/navigation";
 
 import { SessionTabs } from "./SessionTabs";
 import { StatusBar } from "./StatusBar";
@@ -25,9 +28,16 @@ import { WIDE_WORKSPACE_QUERY } from "./layoutConstants";
 type AppShellProps = {
   isFilePanelOpen: boolean;
   onFilePanelOpenChange: (isOpen: boolean) => void;
+  activeView: AppView;
+  onViewChange: (view: AppView) => void;
 };
 
-export function AppShell({ isFilePanelOpen, onFilePanelOpenChange }: AppShellProps) {
+export function AppShell({
+  isFilePanelOpen,
+  onFilePanelOpenChange,
+  activeView,
+  onViewChange,
+}: AppShellProps) {
   const isWideWorkspace = useMediaQuery(WIDE_WORKSPACE_QUERY);
   const sidebarPanelRef = usePanelRef();
   const transferPanelRef = usePanelRef();
@@ -104,65 +114,79 @@ export function AppShell({ isFilePanelOpen, onFilePanelOpenChange }: AppShellPro
           <ConnectionSidebar
             isCollapsed={isSidebarCollapsed}
             onCollapseToggle={handleSidebarToggle}
+            activeView={activeView}
+            onViewChange={onViewChange}
           />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="workspace" minSize={560}>
           <main className="flex h-full min-w-0 flex-col bg-workspace">
-            <SessionTabs
-              isFilePanelOpen={isFilePanelOpen}
-              onFilePanelToggle={() => onFilePanelOpenChange(!isFilePanelOpen)}
-            />
-
-            <ResizablePanelGroup
-              orientation="vertical"
-              className="min-h-0 flex-1"
-              defaultLayout={transferLayout.defaultLayout}
-              onLayoutChanged={transferLayout.onLayoutChanged}
-            >
-              <ResizablePanel id="session" minSize={280}>
-                {isWideWorkspace && isFilePanelOpen ? (
-                  <ResizablePanelGroup
-                    orientation="horizontal"
-                    defaultLayout={fileLayout.defaultLayout}
-                    onLayoutChanged={fileLayout.onLayoutChanged}
-                  >
-                    <ResizablePanel id="terminal" minSize={560}>
-                      <TerminalWorkspace />
-                    </ResizablePanel>
-                    <ResizableHandle />
-                    <ResizablePanel
-                      id="files"
-                      defaultSize={320}
-                      minSize={280}
-                      maxSize={520}
-                      groupResizeBehavior="preserve-pixel-size"
-                    >
-                      <FilePanel />
-                    </ResizablePanel>
-                  </ResizablePanelGroup>
-                ) : (
-                  <TerminalWorkspace />
-                )}
-              </ResizablePanel>
-              <ResizableHandle />
-              <ResizablePanel
-                id="transfers"
-                panelRef={transferPanelRef}
-                defaultSize={32}
-                minSize={120}
-                maxSize="40%"
-                collapsedSize={32}
-                collapsible
-                groupResizeBehavior="preserve-pixel-size"
-                onResize={handleTransferResize}
-              >
-                <TransferDrawer
-                  isExpanded={isTransferDrawerExpanded}
-                  onToggle={handleTransferToggle}
+            {activeView === "settings" ? (
+              <>
+                <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-surface px-4">
+                  <Settings2 className="size-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">设置</span>
+                </header>
+                <SettingsWorkspace />
+              </>
+            ) : (
+              <>
+                <SessionTabs
+                  isFilePanelOpen={isFilePanelOpen}
+                  onFilePanelToggle={() => onFilePanelOpenChange(!isFilePanelOpen)}
                 />
-              </ResizablePanel>
-            </ResizablePanelGroup>
+
+                <ResizablePanelGroup
+                  orientation="vertical"
+                  className="min-h-0 flex-1"
+                  defaultLayout={transferLayout.defaultLayout}
+                  onLayoutChanged={transferLayout.onLayoutChanged}
+                >
+                  <ResizablePanel id="session" minSize={280}>
+                    {isWideWorkspace && isFilePanelOpen ? (
+                      <ResizablePanelGroup
+                        orientation="horizontal"
+                        defaultLayout={fileLayout.defaultLayout}
+                        onLayoutChanged={fileLayout.onLayoutChanged}
+                      >
+                        <ResizablePanel id="terminal" minSize={560}>
+                          <TerminalWorkspace />
+                        </ResizablePanel>
+                        <ResizableHandle />
+                        <ResizablePanel
+                          id="files"
+                          defaultSize={320}
+                          minSize={280}
+                          maxSize={520}
+                          groupResizeBehavior="preserve-pixel-size"
+                        >
+                          <FilePanel />
+                        </ResizablePanel>
+                      </ResizablePanelGroup>
+                    ) : (
+                      <TerminalWorkspace />
+                    )}
+                  </ResizablePanel>
+                  <ResizableHandle />
+                  <ResizablePanel
+                    id="transfers"
+                    panelRef={transferPanelRef}
+                    defaultSize={32}
+                    minSize={120}
+                    maxSize="40%"
+                    collapsedSize={32}
+                    collapsible
+                    groupResizeBehavior="preserve-pixel-size"
+                    onResize={handleTransferResize}
+                  >
+                    <TransferDrawer
+                      isExpanded={isTransferDrawerExpanded}
+                      onToggle={handleTransferToggle}
+                    />
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </>
+            )}
           </main>
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -170,7 +194,7 @@ export function AppShell({ isFilePanelOpen, onFilePanelOpenChange }: AppShellPro
       <StatusBar />
 
       <Sheet
-        open={!isWideWorkspace && isFilePanelOpen}
+        open={activeView === "workspace" && !isWideWorkspace && isFilePanelOpen}
         onOpenChange={onFilePanelOpenChange}
       >
         <SheetContent

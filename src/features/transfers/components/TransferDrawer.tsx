@@ -8,6 +8,7 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
 
 type TransferDrawerProps = {
   isExpanded: boolean;
@@ -31,17 +32,24 @@ export function TransferDrawer({ isExpanded, onToggle }: TransferDrawerProps) {
           aria-label={isExpanded ? "收起传输队列" : "展开传输队列"}
           onClick={onToggle}
         >
-          {isExpanded ? <ChevronDown /> : <ChevronUp />}
+          {isExpanded ? (
+            <ChevronDown data-icon="inline-start" />
+          ) : (
+            <ChevronUp data-icon="inline-start" />
+          )}
         </Button>
       </header>
 
       {isExpanded ? (
-        <Empty className="min-h-0 rounded-none border-t p-4">
-          <EmptyHeader>
-            <EmptyTitle>暂无传输任务</EmptyTitle>
-            <EmptyDescription>上传或下载文件后，进度会显示在这里。</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+        <>
+          <Separator />
+          <Empty size="compact" className="min-h-0">
+            <EmptyHeader>
+              <EmptyTitle>暂无传输任务</EmptyTitle>
+              <EmptyDescription>上传或下载文件后，进度会显示在这里。</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </>
       ) : null}
     </section>
   );
