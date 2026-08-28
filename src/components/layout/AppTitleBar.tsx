@@ -3,11 +3,13 @@ import { Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TransferPopover } from "@/features/transfers/components/TransferPopover";
+import type { FileTransfersController } from "@/features/transfers/hooks/useFileTransfers";
 import type { AppView } from "@/types/navigation";
 
 type AppTitleBarProps = {
   activeView: AppView;
   activeContextLabel: string | null;
+  transfers: FileTransfersController;
   onViewChange: (view: AppView) => void;
 };
 
@@ -18,6 +20,7 @@ function isMacOS() {
 export function AppTitleBar({
   activeView,
   activeContextLabel,
+  transfers,
   onViewChange,
 }: AppTitleBarProps) {
   const isMacPlatform = isMacOS();
@@ -48,7 +51,7 @@ export function AppTitleBar({
       />
 
       <div className="flex h-full shrink-0 items-center gap-1 px-2">
-        <TransferPopover />
+        <TransferPopover controller={transfers} />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

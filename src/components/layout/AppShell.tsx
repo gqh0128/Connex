@@ -24,6 +24,7 @@ import { useRemoteFiles } from "@/features/sftp/hooks/useRemoteFiles";
 import { HostKeyVerificationDialog } from "@/features/terminal/components/HostKeyVerificationDialog";
 import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorkspace";
 import type { SshSessionsController } from "@/features/terminal/hooks/useSshSessions";
+import { useFileTransfers } from "@/features/transfers/hooks/useFileTransfers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 import type { AppView } from "@/types/navigation";
@@ -57,6 +58,9 @@ export function AppShell({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const activeSession = sshSessions.activeTab?.snapshot ?? null;
   const remoteFiles = useRemoteFiles(activeSession);
+  const fileTransfers = useFileTransfers();
+  const activeSessionIdRef = useRef(activeSession?.id ?? null);
+  const remoteFilesRef = useRef(remoteFiles);
 
   const shellLayout = useDefaultLayout({
     id: "connex-shell-layout-v2",
@@ -88,6 +92,35 @@ export function AppShell({
     onViewChange("workspace");
     connectionSidebarRef.current?.openCreateForm();
   }, [onViewChange]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSession?.id ?? null;
+    remoteFilesRef.current = remoteFiles;
+  }, [activeSession?.id, remoteFiles]);
+
+  const uploadFiles = useCallback(() => {
+    const session = activeSession;
+    const remoteDirectory = remoteFiles.directory?.path;
+    if (!session || session.state !== "connected" || !remoteDirectory) {
+      return;
+    }
+
+    const sessionId = session.id;
+    void fileTransfers.selectAndUpload({
+      sessionId,
+      connectionName: session.connectionName,
+      remoteDirectory,
+      onCompleted: () => {
+        const currentRemoteFiles = remoteFilesRef.current;
+        if (
+          activeSessionIdRef.current === sessionId &&
+          currentRemoteFiles.directory?.path === remoteDirectory
+        ) {
+          currentRemoteFiles.refresh();
+        }
+      },
+    });
+  }, [activeSession, fileTransfers, remoteFiles.directory?.path]);
 
   useEffect(() => {
     const filePanel = filePanelRef.current;
@@ -133,6 +166,7 @@ export function AppShell({
       <AppTitleBar
         activeView={activeView}
         activeContextLabel={sshSessions.activeTab?.profile.name ?? null}
+        transfers={fileTransfers}
         onViewChange={onViewChange}
       />
 
@@ -223,7 +257,12 @@ export function AppShell({
                       aria-hidden={!(isWideWorkspace && isFilePanelOpen)}
                       inert={!(isWideWorkspace && isFilePanelOpen)}
                     >
-                      <FilePanel session={activeSession} browser={remoteFiles} />
+                      <FilePanel
+                        session={activeSession}
+                        browser={remoteFiles}
+                        isSelectingUpload={fileTransfers.isSelectingFiles}
+                        onUpload={uploadFiles}
+                      />
                     </div>
                   </ResizablePanel>
                 </ResizablePanelGroup>
@@ -274,6 +313,8 @@ export function AppShell({
           <FilePanel
             session={activeSession}
             browser={remoteFiles}
+            isSelectingUpload={fileTransfers.isSelectingFiles}
+            onUpload={uploadFiles}
             className="h-full border-l-0"
             onClose={() => onFilePanelOpenChange(false)}
           />

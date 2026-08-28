@@ -37,18 +37,34 @@ import type { RemoteFileEntry, RemoteFileKind } from "@/types/sftp";
 type FilePanelProps = {
   session: SessionSnapshot | null;
   browser: RemoteFilesController;
+  isSelectingUpload?: boolean;
+  onUpload?: () => void;
   className?: string;
   onClose?: () => void;
 };
 
-export function FilePanel({ session, browser, className, onClose }: FilePanelProps) {
+export function FilePanel({
+  session,
+  browser,
+  isSelectingUpload = false,
+  onUpload,
+  className,
+  onClose,
+}: FilePanelProps) {
   const { directory, isConnected, isLoading } = browser;
 
   return (
     <aside className={cn("flex min-h-0 flex-col border-l bg-surface", className)}>
       <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
         <div className="flex items-center gap-0.5">
-          <PanelButton label="上传文件" icon={Upload} disabled />
+          <PanelButton
+            label={isSelectingUpload ? "正在选择文件" : "上传文件"}
+            icon={Upload}
+            disabled={
+              !isConnected || !directory || isLoading || isSelectingUpload || !onUpload
+            }
+            onClick={onUpload}
+          />
           <PanelButton label="下载文件" icon={Download} disabled />
           <PanelButton label="新建目录" icon={FolderPlus} disabled />
           <PanelButton

@@ -12,3 +12,22 @@ export type RemoteDirectory = {
   path: string;
   entries: RemoteFileEntry[];
 };
+
+export type UploadRemoteFileInput = {
+  transferId: string;
+  sessionId: string;
+  localPath: string;
+  remoteDirectory: string;
+};
+
+export type RemoteUploadProgress = {
+  transferId: string;
+  transferredBytes: number;
+  totalBytes: number;
+  bytesPerSecond: number;
+};
+
+export type RemoteUploadResult = {
+  remotePath: string;
+  totalBytes: number;
+};
