@@ -6,7 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "pnpm typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml --all",
+    "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+    "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm check:rust",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -27,14 +33,22 @@
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
     "@types/node": "^26.4.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.68.0",
     "vite": "^7.0.4"
   }
 }

@@ -1,11 +1,4 @@
-import {
-  ChevronsUpDown,
-  Clock3,
-  Plus,
-  Search,
-  Server,
-  Settings,
-} from "lucide-react";
+import { ChevronsUpDown, Clock3, Plus, Search, Server, Settings } from "lucide-react";
 
 import { ConnexMark } from "@/components/brand/ConnexMark";
 import { Button } from "@/components/ui/button";
@@ -95,9 +88,7 @@ function SidebarItem({ icon: Icon, label, count }: SidebarItemProps) {
       <Icon className="size-3.5" />
       <span className="flex-1 text-left">{label}</span>
       {count !== undefined ? (
-        <span className="font-mono text-[10px] text-muted-foreground/70">
-          {count}
-        </span>
+        <span className="font-mono text-[10px] text-muted-foreground/70">{count}</span>
       ) : null}
     </button>
   );

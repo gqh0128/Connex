@@ -8,10 +8,7 @@ type SessionTabsProps = {
   onFilePanelToggle: () => void;
 };
 
-export function SessionTabs({
-  isFilePanelOpen,
-  onFilePanelToggle,
-}: SessionTabsProps) {
+export function SessionTabs({ isFilePanelOpen, onFilePanelToggle }: SessionTabsProps) {
   return (
     <header className="flex h-11 shrink-0 items-stretch border-b border-border bg-surface/80">
       <div className="flex min-w-0 flex-1 items-stretch overflow-hidden">

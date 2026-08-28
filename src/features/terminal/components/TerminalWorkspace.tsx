@@ -61,9 +61,7 @@ function Hint({ icon: Icon, title, text }: HintProps) {
     <div className="rounded-lg border border-border/70 bg-surface/50 p-3">
       <Icon className="mb-2 size-4 text-primary" />
       <div className="text-xs font-medium text-foreground/90">{title}</div>
-      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
-        {text}
-      </div>
+      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{text}</div>
     </div>
   );
 }

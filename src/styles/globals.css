@@ -38,10 +38,10 @@
 
 :root {
   color-scheme: dark;
-  --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  --font-terminal: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo,
-    monospace;
+  --font-ui:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-terminal:
+    "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
   --radius: 0.5rem;
 
   --background: oklch(0.145 0.008 265);

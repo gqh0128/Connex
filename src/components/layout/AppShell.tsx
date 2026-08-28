@@ -11,10 +11,7 @@ type AppShellProps = {
   onFilePanelToggle: () => void;
 };
 
-export function AppShell({
-  isFilePanelOpen,
-  onFilePanelToggle,
-}: AppShellProps) {
+export function AppShell({ isFilePanelOpen, onFilePanelToggle }: AppShellProps) {
   return (
     <div className="grid h-svh grid-cols-[15.5rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_1.5rem] overflow-hidden bg-background text-foreground">
       <ConnectionSidebar />
@@ -28,9 +25,7 @@ export function AppShell({
         <div
           className={cn(
             "grid min-h-0 flex-1",
-            isFilePanelOpen
-              ? "grid-cols-[minmax(0,1fr)_19rem]"
-              : "grid-cols-1",
+            isFilePanelOpen ? "grid-cols-[minmax(0,1fr)_19rem]" : "grid-cols-1",
           )}
         >
           <TerminalWorkspace />
