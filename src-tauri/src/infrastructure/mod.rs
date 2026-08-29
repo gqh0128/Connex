@@ -1,3 +1,4 @@
+pub mod app_settings;
 pub mod connections;
 pub mod credentials;
 pub mod database;

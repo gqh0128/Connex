@@ -7,6 +7,7 @@ mod services;
 
 use tauri::{Manager, WindowEvent};
 
+use infrastructure::app_settings::AppSettingsRepository;
 use infrastructure::connections::ConnectionRepository;
 use infrastructure::credentials::CredentialStore;
 use infrastructure::database::Database;
@@ -36,7 +37,9 @@ pub fn run() {
                 KnownHostRepository::new(database.clone()),
             ));
             let backup_service = ConnectionBackupService::new(connection_service.clone());
+            let app_settings_repository = AppSettingsRepository::new(database.clone());
             app.manage(database);
+            app.manage(app_settings_repository);
             app.manage(connection_service);
             app.manage(backup_service);
             app.manage(session_manager);
@@ -53,6 +56,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app::get_app_info,
+            commands::app::get_app_preferences,
+            commands::app::update_app_preferences,
             commands::backups::export_connection_backup,
             commands::backups::inspect_connection_backup,
             commands::backups::import_connection_backup,

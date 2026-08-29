@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::infrastructure::app_settings::AppSettingsRepositoryError;
 use crate::managers::sessions::SessionManagerError;
 use crate::services::backups::BackupServiceError;
 use crate::services::connections::ConnectionServiceError;
@@ -10,6 +11,16 @@ pub struct CommandError {
     pub code: &'static str,
     pub message: &'static str,
     pub field: Option<&'static str>,
+}
+
+impl From<AppSettingsRepositoryError> for CommandError {
+    fn from(_: AppSettingsRepositoryError) -> Self {
+        Self {
+            code: "app_settings_unavailable",
+            message: "应用设置暂时无法访问，请稍后重试。",
+            field: None,
+        }
+    }
 }
 
 impl From<ConnectionServiceError> for CommandError {

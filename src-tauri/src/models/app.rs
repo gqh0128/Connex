@@ -1,8 +1,20 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
     pub name: &'static str,
     pub version: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppPreferences {
+    pub confirm_before_exit: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAppPreferencesInput {
+    pub confirm_before_exit: bool,
 }
