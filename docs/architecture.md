@@ -174,6 +174,10 @@ v1 备份只迁移私钥路径和可选的私钥口令，不复制私钥文件�
 
 known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主机可以保存多种主机密钥算法；已经记录的算法出现不同指纹时必须拒绝连接，不能由普通的“首次信任”流程覆盖。
 
+应用设置使用单例 `app_settings` 表保存，首个字段为默认开启的 `confirm_before_exit`。React 启动后通过类型化 commands 读取偏好，设置页修改和退出确认中的“记住我的选择”都必须先写入 SQLite，再更新内存状态；读取失败时采用安全默认值，仍然显示退出确认。
+
+主窗口通过 Tauri `onCloseRequested` 拦截系统关闭请求并立即 `preventDefault()`。需要确认时打开前端 `AlertDialog`；用户取消只关闭弹窗，不写入偏好。用户确认退出后调用 `destroy()`，绕过新的 `closeRequested` 事件并进入现有窗口销毁清理流程；偏好关闭时也必须先拦截请求再执行 `destroy()`，避免平台行为分叉。
+
 ## 10. 技术验证门槛
 
 在完整连接 UI 之前先完成 SSH 技术验证，至少覆盖：

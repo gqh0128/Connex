@@ -1,13 +1,17 @@
 import { Monitor, Moon, Sun, TerminalSquare } from "lucide-react";
+import { useState } from "react";
 
 import { isThemeMode } from "@/app/theme";
 import { useTheme } from "@/app/useTheme";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
+  FieldLabel,
   FieldTitle,
 } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,11 +21,38 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ConnectionBackupSettings } from "./ConnectionBackupSettings";
 
 type SettingsWorkspaceProps = {
+  confirmBeforeExit: boolean;
+  isAppPreferencesLoading: boolean;
+  appPreferencesError: string | null;
+  onConfirmBeforeExitChange: (confirmBeforeExit: boolean) => Promise<void>;
   onConnectionsImported: () => void;
 };
 
-export function SettingsWorkspace({ onConnectionsImported }: SettingsWorkspaceProps) {
+export function SettingsWorkspace({
+  confirmBeforeExit,
+  isAppPreferencesLoading,
+  appPreferencesError,
+  onConfirmBeforeExitChange,
+  onConnectionsImported,
+}: SettingsWorkspaceProps) {
   const { mode, resolvedTheme, setMode } = useTheme();
+  const [isSavingExitPreference, setIsSavingExitPreference] = useState(false);
+  const [exitPreferenceError, setExitPreferenceError] = useState<string | null>(null);
+
+  const updateExitPreference = async (nextValue: boolean) => {
+    setIsSavingExitPreference(true);
+    setExitPreferenceError(null);
+    try {
+      await onConfirmBeforeExitChange(nextValue);
+    } catch {
+      setExitPreferenceError("无法保存退出设置，请稍后重试。");
+    } finally {
+      setIsSavingExitPreference(false);
+    }
+  };
+
+  const displayedExitPreferenceError = exitPreferenceError ?? appPreferencesError;
+  const isExitPreferenceDisabled = isAppPreferencesLoading || isSavingExitPreference;
 
   return (
     <ScrollArea className="min-h-0 flex-1 bg-workspace">
@@ -29,9 +60,43 @@ export function SettingsWorkspace({ onConnectionsImported }: SettingsWorkspacePr
         <header className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold tracking-tight">设置</h1>
           <p className="text-sm text-muted-foreground">
-            管理 Connex 的界面外观与本地连接数据。
+            管理 Connex 的行为、界面外观与本地连接数据。
           </p>
         </header>
+
+        <section className="flex flex-col gap-3" aria-labelledby="general-heading">
+          <h2 id="general-heading" className="text-sm font-semibold">
+            通用
+          </h2>
+
+          <div className="overflow-hidden rounded-lg border bg-surface">
+            <FieldGroup className="gap-0">
+              <Field
+                orientation="horizontal"
+                className="p-5"
+                data-disabled={isExitPreferenceDisabled}
+                data-invalid={Boolean(displayedExitPreferenceError)}
+              >
+                <FieldContent>
+                  <FieldLabel htmlFor="confirm-before-exit">退出前确认</FieldLabel>
+                  <FieldDescription>
+                    关闭 Connex 时先询问，避免意外中断 SSH 会话或文件传输。
+                  </FieldDescription>
+                  <FieldError>{displayedExitPreferenceError}</FieldError>
+                </FieldContent>
+                <Checkbox
+                  id="confirm-before-exit"
+                  checked={confirmBeforeExit}
+                  disabled={isExitPreferenceDisabled}
+                  aria-invalid={Boolean(displayedExitPreferenceError)}
+                  onCheckedChange={(checked) =>
+                    void updateExitPreference(checked === true)
+                  }
+                />
+              </Field>
+            </FieldGroup>
+          </div>
+        </section>
 
         <section className="flex flex-col gap-3" aria-labelledby="appearance-heading">
           <div className="flex items-center gap-3">

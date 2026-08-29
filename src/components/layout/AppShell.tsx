@@ -45,6 +45,10 @@ type AppShellProps = {
   pageTabs: WorkspacePageTab[];
   onPageOpen: (pageId: WorkspacePageId) => void;
   onPageClose: (pageId: WorkspacePageId) => void;
+  confirmBeforeExit: boolean;
+  isAppPreferencesLoading: boolean;
+  appPreferencesError: string | null;
+  onConfirmBeforeExitChange: (confirmBeforeExit: boolean) => Promise<void>;
   sshSessions: SshSessionsController;
 };
 
@@ -56,6 +60,10 @@ export function AppShell({
   pageTabs,
   onPageOpen,
   onPageClose,
+  confirmBeforeExit,
+  isAppPreferencesLoading,
+  appPreferencesError,
+  onConfirmBeforeExitChange,
   sshSessions,
 }: AppShellProps) {
   const isWideWorkspace = useMediaQuery(WIDE_WORKSPACE_QUERY);
@@ -308,6 +316,10 @@ export function AppShell({
                   className="absolute inset-0 min-w-0 bg-workspace"
                 >
                   <SettingsWorkspace
+                    confirmBeforeExit={confirmBeforeExit}
+                    isAppPreferencesLoading={isAppPreferencesLoading}
+                    appPreferencesError={appPreferencesError}
+                    onConfirmBeforeExitChange={onConfirmBeforeExitChange}
                     onConnectionsImported={() =>
                       void connectionSidebarRef.current?.refreshConnections()
                     }

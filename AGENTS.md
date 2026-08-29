@@ -24,6 +24,7 @@ Connex 是桌面 SSH 客户端。第一阶段只围绕以下主流程开发：�
 - 普通控制操作使用类型化 Tauri commands；终端输出和传输进度使用 Tauri Channel。
 - 文件内容在 Rust 本地 I/O 与 SFTP 之间直接流动，禁止经过 React 或 JSON。
 - 不通过系统 `ssh` 子进程实现核心连接，除非架构决策被明确修改。
+- 系统窗口关闭请求由前端 `onCloseRequested` 统一拦截；默认确认后使用 `destroy()` 真正关闭，不能再次调用 `close()` 形成确认循环。退出确认偏好必须存 SQLite，并在设置页提供恢复入口。
 
 ## 前端目录与依赖方向
 
