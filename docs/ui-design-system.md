@@ -118,6 +118,7 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 - 设置由全局栏右侧图标按钮打开为工作区标签；重复点击只聚焦已有标签，不创建副本。返回会话通过点击对应会话标签完成，关闭设置使用标签叉号或 `Cmd/Ctrl+W`。
 - 设置页“通用”区域提供“退出前确认”复选框。用户记住直接退出后可在此重新开启；读取和保存期间禁用控件，失败信息显示在字段内。
 - 设置页“外观”区域提供“终端语义高亮”复选框，默认开启。关闭后只停用 Connex 附加的语义 decoration，不影响远端 ANSI、URL 悬停与链接打开能力。
+- 设置页“外观”区域提供终端字体选择器和“导入字体”操作。选择器用稳定 profile ID 同时列出内置预设与已导入字体；导入支持不超过 10 MiB 的 TTF、OTF、WOFF 和 WOFF2，成功后立即选中并应用到所有 xterm 会话。删除自定义字体必须使用 `AlertDialog`，只删除 Connex 保存的副本，不处理用户原始文件。
 - 打开设置只在视觉上隐藏会话工作区，不能卸载终端实例或关闭 SSH 会话；切回会话标签后重新适配当前终端尺寸并恢复焦点。
 - 设置分类位于页面左侧，内容区使用标题、说明和 `Field` 组合；每个分组只解决一个主题。
 - 外观设置使用三项 `ToggleGroup`：跟随系统、浅色、深色。终端默认跟随应用主题；出现第二套真实终端主题时，将当前 profile 状态升级为单选选择器，选择结果使用稳定 profile ID 持久化。
@@ -142,7 +143,9 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 | 主要操作           | 高 `36–40px`  |
 
 - UI 使用系统字体栈，不依赖网络字体：macOS 优先系统字体，Windows 优先 Segoe UI，中文回退到系统中文无衬线字体。
-- 终端默认 `13px`、行高 `1.25`，优先 `SFMono-Regular`、`Cascadia Mono`、`Noto Sans Mono CJK SC`、Menlo、Consolas 和系统等宽字体。
+- 终端默认 `13px`、行高 `1.25`，默认 profile 为内置 JetBrains Mono；同时提供 `SFMono-Regular`、`Cascadia Mono`、`Noto Sans Mono CJK SC`、Menlo、Consolas 和 `monospace` 组成的系统等宽回退 profile。
+- 内置 JetBrains Mono 使用仓库本地 WOFF2 的 Regular、Bold、Italic 和 BoldItalic，并保留 OFL 许可证，不从网络加载。内置预设通过 `terminalFontProfiles.ts` 注册；后续增加预设只添加字体资源和 profile，不能在设置组件或 `TerminalPane` 中增加字体名称分支。
+- 用户字体只注册给 xterm.js 的 `fontFamily`，不得修改 `--font-ui`、`--font-terminal` 或设置页等应用界面字体。字体异步加载完成后刷新并重新 fit 现有终端，不重新连接 SSH。
 - 全局圆角基准为 `8px`。输入框和按钮使用 `6–8px`，卡片和浮层使用 `8–12px`；停靠面板和表格行不增加独立圆角。
 - 停靠区域只用 `1px` 边框分层；阴影仅用于 Popover、Dropdown、Sheet 和 Dialog。
 - 图标统一使用 Lucide。常规图标视觉尺寸 `16px`，紧凑辅助图标 `14px`；单图标按钮必须带 Tooltip 和可访问名称。
@@ -239,21 +242,22 @@ Connex Neutral 的附加语义色固定如下：
 
 业务界面优先组合 shadcn/ui 原语，避免重新手写等价的键盘、焦点和 overlay 行为。
 
-| 场景             | 组件基线                                                 |
-| ---------------- | -------------------------------------------------------- |
-| 连接侧栏         | `Sidebar`、`ScrollArea`、`Collapsible`、`ContextMenu`    |
-| 连接搜索         | `InputGroup`                                             |
-| 工作区标签与溢出 | `Tabs`、横向 `ScrollArea`、`DropdownMenu`、`ContextMenu` |
-| 工作区和面板尺寸 | `Resizable`                                              |
-| 新建/编辑连接    | `Dialog`、`FieldGroup`、`Field`、`Input`、`ToggleGroup`  |
-| 连接导入/导出    | `Dialog`、`FieldSet`、`InputGroup`、`ToggleGroup`        |
-| 三选一外观设置   | `ToggleGroup`                                            |
-| 文件路径和列表   | `Breadcrumb`、`Table`、`ContextMenu`                     |
-| 传输任务         | `Popover`、`ScrollArea`、`Progress`、`Badge`             |
-| 空状态与加载     | `Empty`、`Skeleton`                                      |
-| 安全和删除确认   | `AlertDialog`                                            |
-| 非阻塞结果通知   | `Sonner`                                                 |
-| 图标解释         | `Tooltip`                                                |
+| 场景             | 组件基线                                                                     |
+| ---------------- | ---------------------------------------------------------------------------- |
+| 连接侧栏         | `Sidebar`、`ScrollArea`、`Collapsible`、`ContextMenu`                        |
+| 连接搜索         | `InputGroup`                                                                 |
+| 工作区标签与溢出 | `Tabs`、横向 `ScrollArea`、`DropdownMenu`、`ContextMenu`                     |
+| 工作区和面板尺寸 | `Resizable`                                                                  |
+| 新建/编辑连接    | `Dialog`、`FieldGroup`、`Field`、`Input`、`ToggleGroup`                      |
+| 连接导入/导出    | `Dialog`、`FieldSet`、`InputGroup`、`ToggleGroup`                            |
+| 三选一外观设置   | `ToggleGroup`                                                                |
+| 终端字体设置     | `Field`、`Popover`、`Button`、删除用 `AlertDialog`       |
+| 文件路径和列表   | `Breadcrumb`、`Table`、`ContextMenu`                                         |
+| 传输任务         | `Popover`、`ScrollArea`、`Progress`、`Badge`                                 |
+| 空状态与加载     | `Empty`、`Skeleton`                                                          |
+| 安全和删除确认   | `AlertDialog`                                                                |
+| 非阻塞结果通知   | `Sonner`                                                                     |
+| 图标解释         | `Tooltip`                                                                    |
 
 组件的颜色和字体优先使用其现有 variant；`className` 主要负责布局。新增或更新组件时必须遵循仓库 `shadcn` skill 和 `AGENTS.md` 中的工作流。
 

@@ -25,6 +25,7 @@ type TerminalWorkspaceProps = {
   isWorkspaceVisible: boolean;
   themeProfileId: TerminalThemeProfileId;
   isSemanticHighlightingEnabled: boolean;
+  fontFamily: string;
   onNewConnection: () => void;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
@@ -39,6 +40,7 @@ export function TerminalWorkspace({
   isWorkspaceVisible,
   themeProfileId,
   isSemanticHighlightingEnabled,
+  fontFamily,
   onNewConnection,
   onStart,
   onRegisterOutput,
@@ -87,6 +89,7 @@ export function TerminalWorkspace({
           isWorkspaceVisible={isWorkspaceVisible}
           themeProfileId={themeProfileId}
           isSemanticHighlightingEnabled={isSemanticHighlightingEnabled}
+          fontFamily={fontFamily}
           onStart={onStart}
           onRegisterOutput={onRegisterOutput}
           onInput={onInput}

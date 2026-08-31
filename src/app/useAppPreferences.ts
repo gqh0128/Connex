@@ -4,10 +4,12 @@ import { getAppPreferences, updateAppPreferences } from "@/lib/tauri/app";
 import { getCommandError } from "@/lib/tauri/errors";
 import type { AppPreferences } from "@/types/app";
 import type { CommandError } from "@/types/ipc";
+import { DEFAULT_TERMINAL_FONT_ID } from "@/features/terminal/terminalFontProfiles";
 
 const DEFAULT_APP_PREFERENCES: AppPreferences = {
   confirmBeforeExit: true,
   terminalSemanticHighlightingEnabled: true,
+  terminalFontId: DEFAULT_TERMINAL_FONT_ID,
 };
 
 export type AppPreferencesController = {

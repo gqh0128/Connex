@@ -22,6 +22,7 @@ import { useRemoteFiles } from "@/features/sftp/hooks/useRemoteFiles";
 import { HostKeyVerificationDialog } from "@/features/terminal/components/HostKeyVerificationDialog";
 import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorkspace";
 import type { SshSessionsController } from "@/features/terminal/hooks/useSshSessions";
+import type { TerminalFontsController } from "@/features/terminal/hooks/useTerminalFonts";
 import type { TerminalThemeProfileId } from "@/features/terminal/terminalThemeProfiles";
 import { useFileTransfers } from "@/features/transfers/hooks/useFileTransfers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -52,6 +53,7 @@ type AppShellProps = {
   appPreferencesError: string | null;
   onAppPreferencesChange: (changes: Partial<AppPreferences>) => Promise<AppPreferences>;
   terminalThemeProfileId: TerminalThemeProfileId;
+  terminalFonts: TerminalFontsController;
   sshSessions: SshSessionsController;
 };
 
@@ -68,6 +70,7 @@ export function AppShell({
   appPreferencesError,
   onAppPreferencesChange,
   terminalThemeProfileId,
+  terminalFonts,
   sshSessions,
 }: AppShellProps) {
   const isWideWorkspace = useMediaQuery(WIDE_WORKSPACE_QUERY);
@@ -278,6 +281,7 @@ export function AppShell({
                         isSemanticHighlightingEnabled={
                           appPreferences.terminalSemanticHighlightingEnabled
                         }
+                        fontFamily={terminalFonts.activeFontFamily}
                         onNewConnection={openNewConnection}
                         onStart={sshSessions.startSession}
                         onRegisterOutput={sshSessions.registerOutputHandler}
@@ -329,6 +333,7 @@ export function AppShell({
                     appPreferencesError={appPreferencesError}
                     onAppPreferencesChange={onAppPreferencesChange}
                     terminalThemeProfileId={terminalThemeProfileId}
+                    terminalFonts={terminalFonts}
                     onConnectionsImported={() =>
                       void connectionSidebarRef.current?.refreshConnections()
                     }

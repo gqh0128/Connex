@@ -7,6 +7,13 @@ const BACKUP_FILTER = [
   },
 ];
 
+const TERMINAL_FONT_FILTER = [
+  {
+    name: "终端字体",
+    extensions: ["ttf", "otf", "woff", "woff2"],
+  },
+];
+
 export function chooseConnectionBackupExportPath(defaultFileName: string) {
   return save({
     title: "导出 Connex 连接备份",
@@ -36,4 +43,13 @@ export async function chooseLocalFilesForUpload() {
   }
 
   return Array.isArray(selected) ? selected : [selected];
+}
+
+export function chooseTerminalFontFile() {
+  return open({
+    title: "导入终端字体",
+    directory: false,
+    multiple: false,
+    filters: TERMINAL_FONT_FILTER,
+  });
 }

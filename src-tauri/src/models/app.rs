@@ -12,6 +12,7 @@ pub struct AppInfo {
 pub struct AppPreferences {
     pub confirm_before_exit: bool,
     pub terminal_semantic_highlighting_enabled: bool,
+    pub terminal_font_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -19,4 +20,5 @@ pub struct AppPreferences {
 pub struct UpdateAppPreferencesInput {
     pub confirm_before_exit: bool,
     pub terminal_semantic_highlighting_enabled: bool,
+    pub terminal_font_id: String,
 }

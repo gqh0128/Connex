@@ -5,6 +5,7 @@ import { useAppPreferences } from "@/app/useAppPreferences";
 import { useExitConfirmation } from "@/app/useExitConfirmation";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSshSessions } from "@/features/terminal/hooks/useSshSessions";
+import { useTerminalFonts } from "@/features/terminal/hooks/useTerminalFonts";
 import { DEFAULT_TERMINAL_THEME_PROFILE_ID } from "@/features/terminal/terminalThemeProfiles";
 import {
   WORKSPACE_PAGE_DEFINITIONS,
@@ -18,6 +19,7 @@ export function App() {
   const [openPageIds, setOpenPageIds] = useState<WorkspacePageId[]>([]);
   const sshSessions = useSshSessions();
   const appPreferences = useAppPreferences();
+  const terminalFonts = useTerminalFonts(appPreferences.preferences.terminalFontId);
   const exitConfirmation = useExitConfirmation({
     confirmBeforeExit: appPreferences.preferences.confirmBeforeExit,
     onConfirmBeforeExitChange: async (confirmBeforeExit) => {
@@ -52,6 +54,7 @@ export function App() {
         appPreferencesError={appPreferences.error?.message ?? null}
         onAppPreferencesChange={appPreferences.update}
         terminalThemeProfileId={DEFAULT_TERMINAL_THEME_PROFILE_ID}
+        terminalFonts={terminalFonts}
         sshSessions={sshSessions}
       />
       <ExitConfirmationDialog controller={exitConfirmation} />

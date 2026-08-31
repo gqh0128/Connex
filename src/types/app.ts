@@ -6,6 +6,7 @@ export type AppInfo = {
 export type AppPreferences = {
   confirmBeforeExit: boolean;
   terminalSemanticHighlightingEnabled: boolean;
+  terminalFontId: string;
 };
 
 export type UpdateAppPreferencesInput = AppPreferences;

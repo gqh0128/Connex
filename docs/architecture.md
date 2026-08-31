@@ -39,7 +39,7 @@ React 不直接访问网络、数据库、凭据或任意本地路径。Rust 是
 - `components/layout/`：侧栏、统一工作区标签、工作区、状态栏等跨功能布局。
 - `components/ui/`：来自 shadcn/ui 的无业务语义组件。
 - `features/connections/`：连接列表、编辑表单、SSH 配置导入。
-- `features/terminal/`：xterm 实例、输入聚合、输出写入、resize、链接处理、终端主题 profile 和语义高亮。
+- `features/terminal/`：xterm 实例、输入聚合、输出写入、resize、链接处理、终端主题/字体 profile、字体加载和语义高亮。
 - `features/sftp/`：目录导航、远程文件操作和拖拽入口。
 - `features/transfers/`：上传下载队列、进度、取消和重试。
 - `lib/tauri/`：唯一允许导入 `@tauri-apps/api` 命令接口的位置。
@@ -51,6 +51,8 @@ SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只�
 每个会话标签对应一个长期存活的 xterm 实例。切换会话或页面标签、打开设置和展开或收起文件面板只改变可见性或面板尺寸，不能卸载仍存在的终端。React 开发模式重复挂载时，会话 hook 必须保证同一标签只启动一次 Rust 会话，并让后挂载的终端重新接管输出处理器。
 
 终端外观拆为三个独立层次：`terminalThemeProfiles` 保存稳定 profile ID、ANSI palette 和语义 palette；`terminalSemanticRules` 只负责把普通 buffer 文本识别为 URL、命令选项、路径、环境变量、主机/IP 或 Shell 提示符片段；`TerminalSemanticHighlighter` 把匹配结果适配为 xterm cell decoration。React 组合层只传递 profile ID 和是否启用语义高亮，切换设置或 palette 只刷新现有 xterm 实例，不能重建会话。新增主题只注册新的 profile，不复制识别规则或终端生命周期代码。
+
+终端字体使用独立于主题的 profile 注册表。`terminalFontProfiles` 只描述内置预设的稳定 ID、展示信息和 xterm `fontFamily`；`terminalFontLoader` 负责等待内置 Web Font 或把自定义字体 raw bytes 注册为浏览器 `FontFace`；`useTerminalFonts` 负责编排列表、加载状态和导入/删除操作。React 只把解析后的字体栈传给 xterm，切换字体必须刷新现有实例并重新 fit，不得修改应用 UI 字体或重建 SSH 会话。增加新的内置字体只注册 profile 并提供本地字体资源，不复制设置页或 xterm 生命周期代码。
 
 ## 4. Rust 架构
 
@@ -75,6 +77,7 @@ IPC 分为控制面和数据面。
 - resize、keepalive 和终端输入
 - SFTP 目录与文件操作
 - 开始、取消、重试传输
+- 导入、列出、读取和删除终端字体
 
 数据面使用有序 Tauri Channel，适合：
 
@@ -82,6 +85,8 @@ IPC 分为控制面和数据面。
 - 会话状态变化
 - 传输进度和结束事件
 - 大目录的分批加载结果
+
+自定义字体读取使用单次 raw IPC response，不编码为 JSON 数组。字体文件上限为 10 MiB，只有用户明确选择并经 Rust 校验后的本机副本才能返回前端；它不是会话数据流，不进入 SSH Channel。
 
 终端输出使用 `Channel<InvokeResponseBody>` 的 raw bytes，前端直接写入 xterm.js。语义高亮只能在 xterm 完成 VT/ANSI 解析后读取 buffer，并通过 decoration 改变显示；禁止在 raw bytes 中正则替换或插入 CSI 色码。只有使用默认属性的 cell 才允许附加语义色，远端 ANSI 始终优先；alternate buffer 完全跳过，避免影响 Vim、top、tmux 等全屏程序。输入在前端按最多约 `8ms` 或 `4 KiB` 聚合为 `Uint8Array`，并通过串行 Promise 链保持提交顺序，不能为每个字符构造业务 JSON。断线、认证失败等状态通过独立结构化事件发送，不能混入终端字节流。
 
@@ -176,7 +181,9 @@ v1 备份只迁移私钥路径和可选的私钥口令，不复制私钥文件�
 
 known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主机可以保存多种主机密钥算法；已经记录的算法出现不同指纹时必须拒绝连接，不能由普通的“首次信任”流程覆盖。
 
-应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit` 和 `terminal_semantic_highlighting_enabled`。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改和退出确认中的“记住我的选择”都必须先写入 SQLite，再更新内存状态；读取失败时采用安全默认值，仍然显示退出确认并启用语义高亮。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
+应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、`terminal_semantic_highlighting_enabled` 和稳定的 `terminal_font_id`。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改和退出确认中的“记住我的选择”都必须先写入 SQLite，再更新内存状态；读取失败时采用安全默认值，仍然显示退出确认、启用语义高亮并使用内置 JetBrains Mono。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
+
+用户选择的字体由 `TerminalFontService` 校验扩展名、文件签名和 10 MiB 大小限制，再以 UUID 文件名复制到应用数据目录的 `terminal-fonts` 子目录；SQLite 的 `terminal_font_files` 只保存稳定 ID、展示名称、格式、大小和内部文件名，不保留用户原始路径。Commands 保持薄，文件校验与复制在 service 中完成，元数据读写位于 repository。删除字体必须确认且只删除 Connex 的副本；当前选中的自定义字体删除前先切回默认 profile。
 
 主窗口通过 Tauri `onCloseRequested` 拦截系统关闭请求并立即 `preventDefault()`。需要确认时打开前端 `AlertDialog`；用户取消只关闭弹窗，不写入偏好。用户确认退出后调用 `destroy()`，绕过新的 `closeRequested` 事件并进入现有窗口销毁清理流程；偏好关闭时也必须先拦截请求再执行 `destroy()`，避免平台行为分叉。
 
@@ -186,10 +193,11 @@ known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主�
 
 1. 密码、无口令私钥、带口令私钥和 Agent 认证。
 2. 首次主机指纹确认与指纹变化拒绝。
-3. Bash/Zsh、Vim、tmux、top、中文输入、复制粘贴、resize，以及语义高亮在 alternate buffer 中完全停用。
+3. Bash/Zsh、Vim、tmux、top、中文输入、复制粘贴、resize、运行中切换字体，以及语义高亮在 alternate buffer 中完全停用。
 4. 持续大输出、滚动回看和长 URL 下的高亮 decoration 数量、内存、延迟与背压。
-5. 同一连接同时运行终端和 SFTP 上传下载。
-6. 主动关闭、网络断开、超时和应用退出后的资源清理。
+5. 内置字体、系统等宽字体和导入字体在重启后正确恢复；无效格式、超大文件和已删除字体安全回退。
+6. 同一连接同时运行终端和 SFTP 上传下载。
+7. 主动关闭、网络断开、超时和应用退出后的资源清理。
 
 如果 `russh` 在关键服务器算法或认证方式上无法达到要求，再评估 `ssh2/libssh2`。替换只发生在 Infrastructure 层，不改变前端 IPC 与领域模型。
 

@@ -1,12 +1,14 @@
 use std::fmt;
 
 use tokio_rusqlite::Connection;
+use tokio_rusqlite::rusqlite::params;
 
 use crate::infrastructure::database::Database;
 
 pub struct StoredAppPreferences {
     pub confirm_before_exit: bool,
     pub terminal_semantic_highlighting_enabled: bool,
+    pub terminal_font_id: String,
 }
 
 #[derive(Clone)]
@@ -26,13 +28,15 @@ impl AppSettingsRepository {
             .call(
                 |database| -> tokio_rusqlite::rusqlite::Result<StoredAppPreferences> {
                     database.query_row(
-                        "SELECT confirm_before_exit, terminal_semantic_highlighting_enabled \
+                        "SELECT confirm_before_exit, terminal_semantic_highlighting_enabled, \
+                         terminal_font_id \
                      FROM app_settings WHERE id = 1",
                         [],
                         |row| {
                             Ok(StoredAppPreferences {
                                 confirm_before_exit: row.get(0)?,
                                 terminal_semantic_highlighting_enabled: row.get(1)?,
+                                terminal_font_id: row.get(2)?,
                             })
                         },
                     )
@@ -46,6 +50,7 @@ impl AppSettingsRepository {
         &self,
         confirm_before_exit: bool,
         terminal_semantic_highlighting_enabled: bool,
+        terminal_font_id: String,
     ) -> Result<(), AppSettingsRepositoryError> {
         let changed = self
             .connection
@@ -54,9 +59,14 @@ impl AppSettingsRepository {
                     "UPDATE app_settings SET \
                          confirm_before_exit = ?1, \
                          terminal_semantic_highlighting_enabled = ?2, \
+                         terminal_font_id = ?3, \
                          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
                          WHERE id = 1",
-                    [confirm_before_exit, terminal_semantic_highlighting_enabled],
+                    params![
+                        confirm_before_exit,
+                        terminal_semantic_highlighting_enabled,
+                        terminal_font_id,
+                    ],
                 )
             })
             .await

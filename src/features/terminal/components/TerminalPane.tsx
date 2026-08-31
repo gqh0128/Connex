@@ -56,6 +56,7 @@ type TerminalPaneProps = {
   isWorkspaceVisible: boolean;
   themeProfileId: TerminalThemeProfileId;
   isSemanticHighlightingEnabled: boolean;
+  fontFamily: string;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
   onInput: (localId: string, data: Uint8Array) => Promise<void>;
@@ -69,6 +70,7 @@ export function TerminalPane({
   isWorkspaceVisible,
   themeProfileId,
   isSemanticHighlightingEnabled,
+  fontFamily,
   onStart,
   onRegisterOutput,
   onInput,
@@ -82,6 +84,7 @@ export function TerminalPane({
   const appearanceRef = useRef({
     themeProfileId,
     isSemanticHighlightingEnabled,
+    fontFamily,
   });
   const fitRef = useRef<(() => void) | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
@@ -89,8 +92,12 @@ export function TerminalPane({
   const presentation = getSessionPresentation(tab);
 
   useEffect(() => {
-    appearanceRef.current = { themeProfileId, isSemanticHighlightingEnabled };
-  }, [isSemanticHighlightingEnabled, themeProfileId]);
+    appearanceRef.current = {
+      themeProfileId,
+      isSemanticHighlightingEnabled,
+      fontFamily,
+    };
+  }, [fontFamily, isSemanticHighlightingEnabled, themeProfileId]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -104,9 +111,7 @@ export function TerminalPane({
       cursorInactiveStyle: "outline",
       disableStdin: true,
       drawBoldTextInBrightColors: true,
-      fontFamily: getComputedStyle(document.documentElement)
-        .getPropertyValue("--font-terminal")
-        .trim(),
+      fontFamily: appearanceRef.current.fontFamily,
       fontSize: 13,
       lineHeight: 1.25,
       scrollback: 10_000,
@@ -265,6 +270,16 @@ export function TerminalPane({
   useEffect(() => {
     semanticHighlighterRef.current?.setEnabled(isSemanticHighlightingEnabled);
   }, [isSemanticHighlightingEnabled]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || terminal.options.fontFamily === fontFamily) {
+      return;
+    }
+    terminal.options.fontFamily = fontFamily;
+    terminal.refresh(0, terminal.rows - 1);
+    fitRef.current?.();
+  }, [fontFamily]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

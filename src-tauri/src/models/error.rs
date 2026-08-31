@@ -4,6 +4,7 @@ use crate::infrastructure::app_settings::AppSettingsRepositoryError;
 use crate::managers::sessions::SessionManagerError;
 use crate::services::backups::BackupServiceError;
 use crate::services::connections::ConnectionServiceError;
+use crate::services::terminal_fonts::TerminalFontServiceError;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +20,43 @@ impl From<AppSettingsRepositoryError> for CommandError {
             code: "app_settings_unavailable",
             message: "应用设置暂时无法访问，请稍后重试。",
             field: None,
+        }
+    }
+}
+
+impl From<TerminalFontServiceError> for CommandError {
+    fn from(error: TerminalFontServiceError) -> Self {
+        match error {
+            TerminalFontServiceError::InvalidInput { field, message } => Self {
+                code: "invalid_terminal_font",
+                message,
+                field: Some(field),
+            },
+            TerminalFontServiceError::NotFound => Self {
+                code: "terminal_font_not_found",
+                message: "找不到这个终端字体，它可能已被删除。",
+                field: None,
+            },
+            TerminalFontServiceError::Unsupported => Self {
+                code: "unsupported_terminal_font",
+                message: "字体文件无效或格式不受支持，请选择 TTF、OTF、WOFF 或 WOFF2 文件。",
+                field: Some("path"),
+            },
+            TerminalFontServiceError::TooLarge => Self {
+                code: "terminal_font_too_large",
+                message: "字体文件不能超过 10 MB。",
+                field: Some("path"),
+            },
+            TerminalFontServiceError::File => Self {
+                code: "terminal_font_file_unavailable",
+                message: "无法访问字体文件，请检查文件是否存在以及访问权限。",
+                field: Some("path"),
+            },
+            TerminalFontServiceError::Storage => Self {
+                code: "terminal_font_storage_unavailable",
+                message: "终端字体暂时无法保存，请稍后重试。",
+                field: None,
+            },
         }
     }
 }

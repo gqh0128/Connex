@@ -23,6 +23,7 @@ pub async fn get_app_preferences(
             confirm_before_exit: preferences.confirm_before_exit,
             terminal_semantic_highlighting_enabled: preferences
                 .terminal_semantic_highlighting_enabled,
+            terminal_font_id: preferences.terminal_font_id,
         })
         .map_err(Into::into)
 }
@@ -36,11 +37,13 @@ pub async fn update_app_preferences(
         .set_preferences(
             input.confirm_before_exit,
             input.terminal_semantic_highlighting_enabled,
+            input.terminal_font_id.clone(),
         )
         .await
         .map(|()| AppPreferences {
             confirm_before_exit: input.confirm_before_exit,
             terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
+            terminal_font_id: input.terminal_font_id,
         })
         .map_err(Into::into)
 }

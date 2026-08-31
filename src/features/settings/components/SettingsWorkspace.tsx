@@ -24,6 +24,9 @@ import {
   type TerminalThemeProfileId,
 } from "@/features/terminal/terminalThemeProfiles";
 import type { AppPreferences } from "@/types/app";
+import type { TerminalFontsController } from "@/features/terminal/hooks/useTerminalFonts";
+
+import { TerminalFontSettings } from "./TerminalFontSettings";
 
 type SettingsWorkspaceProps = {
   appPreferences: AppPreferences;
@@ -31,6 +34,7 @@ type SettingsWorkspaceProps = {
   appPreferencesError: string | null;
   onAppPreferencesChange: (changes: Partial<AppPreferences>) => Promise<AppPreferences>;
   terminalThemeProfileId: TerminalThemeProfileId;
+  terminalFonts: TerminalFontsController;
   onConnectionsImported: () => void;
 };
 
@@ -40,6 +44,7 @@ export function SettingsWorkspace({
   appPreferencesError,
   onAppPreferencesChange,
   terminalThemeProfileId,
+  terminalFonts,
   onConnectionsImported,
 }: SettingsWorkspaceProps) {
   const { mode, resolvedTheme, setMode } = useTheme();
@@ -220,6 +225,16 @@ export function SettingsWorkspace({
                   }
                 />
               </Field>
+
+              <Separator />
+
+              <TerminalFontSettings
+                appPreferences={appPreferences}
+                isAppPreferencesLoading={isAppPreferencesLoading}
+                appPreferencesError={appPreferencesError}
+                onAppPreferencesChange={onAppPreferencesChange}
+                terminalFonts={terminalFonts}
+              />
             </FieldGroup>
           </div>
         </section>

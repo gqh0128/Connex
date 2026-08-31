@@ -13,9 +13,11 @@ use infrastructure::credentials::CredentialStore;
 use infrastructure::database::Database;
 use infrastructure::known_hosts::KnownHostRepository;
 use infrastructure::ssh::SshConnector;
+use infrastructure::terminal_fonts::TerminalFontRepository;
 use managers::sessions::SshSessionManager;
 use services::backups::ConnectionBackupService;
 use services::connections::ConnectionService;
+use services::terminal_fonts::TerminalFontService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -38,8 +40,13 @@ pub fn run() {
             ));
             let backup_service = ConnectionBackupService::new(connection_service.clone());
             let app_settings_repository = AppSettingsRepository::new(database.clone());
+            let terminal_font_service = TerminalFontService::new(
+                TerminalFontRepository::new(database.clone()),
+                app_data_dir.join("terminal-fonts"),
+            );
             app.manage(database);
             app.manage(app_settings_repository);
+            app.manage(terminal_font_service);
             app.manage(connection_service);
             app.manage(backup_service);
             app.manage(session_manager);
@@ -58,6 +65,10 @@ pub fn run() {
             commands::app::get_app_info,
             commands::app::get_app_preferences,
             commands::app::update_app_preferences,
+            commands::terminal_fonts::list_terminal_fonts,
+            commands::terminal_fonts::import_terminal_font,
+            commands::terminal_fonts::read_terminal_font,
+            commands::terminal_fonts::delete_terminal_font,
             commands::backups::export_connection_backup,
             commands::backups::inspect_connection_backup,
             commands::backups::import_connection_backup,
