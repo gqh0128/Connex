@@ -52,7 +52,7 @@ SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只�
 
 终端外观拆为三个独立层次：`terminalThemeProfiles` 保存稳定 profile ID、ANSI palette 和语义 palette；`terminalSemanticRules` 只负责把普通 buffer 文本识别为 URL、命令选项、路径、环境变量、主机/IP 或 Shell 提示符片段；`TerminalSemanticHighlighter` 把匹配结果适配为 xterm cell decoration。React 组合层只传递 profile ID 和是否启用语义高亮，切换设置或 palette 只刷新现有 xterm 实例，不能重建会话。新增主题只注册新的 profile，不复制识别规则或终端生命周期代码。
 
-终端字体使用独立于主题的 profile 注册表。`terminalFontProfiles` 只描述内置预设的稳定 ID、展示信息和 xterm `fontFamily`；`terminalFontLoader` 负责等待内置 Web Font 或把自定义字体 raw bytes 注册为浏览器 `FontFace`；`useTerminalFonts` 负责编排列表、加载状态和导入/删除操作。React 只把解析后的字体栈传给 xterm，切换字体必须刷新现有实例并重新 fit，不得修改应用 UI 字体或重建 SSH 会话。增加新的内置字体只注册 profile 并提供本地字体资源，不复制设置页或 xterm 生命周期代码。
+终端字体使用独立于主题的 profile 注册表。`terminalFontProfiles` 只描述内置预设的稳定 ID、展示信息和 xterm `fontFamily`；`terminalFontLoader` 负责等待内置 Web Font 或把自定义字体 raw bytes 注册为浏览器 `FontFace`；`useTerminalFonts` 负责编排列表、加载状态和导入/删除操作。字号范围、默认值、步长和快捷键识别集中在 `terminalFontSize`，平台主修饰键识别集中在 `lib/platform`。React 只把解析后的字体栈和持久化字号传给 xterm，切换字体或字号必须刷新现有实例并重新 fit，不得修改应用 UI 字体或重建 SSH 会话。增加新的内置字体只注册 profile 并提供本地字体资源，不复制设置页或 xterm 生命周期代码。
 
 ## 4. Rust 架构
 
@@ -181,7 +181,7 @@ v1 备份只迁移私钥路径和可选的私钥口令，不复制私钥文件�
 
 known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主机可以保存多种主机密钥算法；已经记录的算法出现不同指纹时必须拒绝连接，不能由普通的“首次信任”流程覆盖。
 
-应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、`terminal_semantic_highlighting_enabled` 和稳定的 `terminal_font_id`。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改和退出确认中的“记住我的选择”都必须先写入 SQLite，再更新内存状态；读取失败时采用安全默认值，仍然显示退出确认、启用语义高亮并使用内置 JetBrains Mono。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
+应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、`terminal_semantic_highlighting_enabled`、稳定的 `terminal_font_id`、`terminal_font_size` 和 `terminal_font_size_shortcuts_enabled`。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改、终端快捷键修改和退出确认中的“记住我的选择”都必须写入 SQLite；读取失败时采用安全默认值，仍然显示退出确认、启用语义高亮、使用内置 JetBrains Mono、13 px 字号并开启字号快捷键。字号在前后端统一限制为 9–32 px。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
 
 用户选择的字体由 `TerminalFontService` 校验扩展名、文件签名和 10 MiB 大小限制，再以 UUID 文件名复制到应用数据目录的 `terminal-fonts` 子目录；SQLite 的 `terminal_font_files` 只保存稳定 ID、展示名称、格式、大小和内部文件名，不保留用户原始路径。Commands 保持薄，文件校验与复制在 service 中完成，元数据读写位于 repository。删除字体必须确认且只删除 Connex 的副本；当前选中的自定义字体删除前先切回默认 profile。
 
@@ -193,9 +193,9 @@ known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主�
 
 1. 密码、无口令私钥、带口令私钥和 Agent 认证。
 2. 首次主机指纹确认与指纹变化拒绝。
-3. Bash/Zsh、Vim、tmux、top、中文输入、复制粘贴、resize、运行中切换字体，以及语义高亮在 alternate buffer 中完全停用。
+3. Bash/Zsh、Vim、tmux、top、中文输入、复制粘贴、resize、运行中切换字体/字号，以及语义高亮在 alternate buffer 中完全停用。
 4. 持续大输出、滚动回看和长 URL 下的高亮 decoration 数量、内存、延迟与背压。
-5. 内置字体、系统等宽字体和导入字体在重启后正确恢复；无效格式、超大文件和已删除字体安全回退。
+5. 内置字体、系统等宽字体、导入字体和字号在重启后正确恢复；无效格式、超大文件、越界字号和已删除字体安全回退；macOS 的 `Command +/-` 与 Windows/Linux 的 `Ctrl +/-` 只在开关启用且终端获得焦点时调整字号，不发送给远端。
 6. 同一连接同时运行终端和 SFTP 上传下载。
 7. 主动关闭、网络断开、超时和应用退出后的资源清理。
 

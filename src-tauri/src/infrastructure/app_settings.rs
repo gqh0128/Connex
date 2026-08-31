@@ -9,6 +9,8 @@ pub struct StoredAppPreferences {
     pub confirm_before_exit: bool,
     pub terminal_semantic_highlighting_enabled: bool,
     pub terminal_font_id: String,
+    pub terminal_font_size: i64,
+    pub terminal_font_size_shortcuts_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -29,7 +31,8 @@ impl AppSettingsRepository {
                 |database| -> tokio_rusqlite::rusqlite::Result<StoredAppPreferences> {
                     database.query_row(
                         "SELECT confirm_before_exit, terminal_semantic_highlighting_enabled, \
-                         terminal_font_id \
+                         terminal_font_id, terminal_font_size, \
+                         terminal_font_size_shortcuts_enabled \
                      FROM app_settings WHERE id = 1",
                         [],
                         |row| {
@@ -37,6 +40,8 @@ impl AppSettingsRepository {
                                 confirm_before_exit: row.get(0)?,
                                 terminal_semantic_highlighting_enabled: row.get(1)?,
                                 terminal_font_id: row.get(2)?,
+                                terminal_font_size: row.get(3)?,
+                                terminal_font_size_shortcuts_enabled: row.get(4)?,
                             })
                         },
                     )
@@ -51,6 +56,8 @@ impl AppSettingsRepository {
         confirm_before_exit: bool,
         terminal_semantic_highlighting_enabled: bool,
         terminal_font_id: String,
+        terminal_font_size: i64,
+        terminal_font_size_shortcuts_enabled: bool,
     ) -> Result<(), AppSettingsRepositoryError> {
         let changed = self
             .connection
@@ -60,12 +67,16 @@ impl AppSettingsRepository {
                          confirm_before_exit = ?1, \
                          terminal_semantic_highlighting_enabled = ?2, \
                          terminal_font_id = ?3, \
+                         terminal_font_size = ?4, \
+                         terminal_font_size_shortcuts_enabled = ?5, \
                          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
                          WHERE id = 1",
                     params![
                         confirm_before_exit,
                         terminal_semantic_highlighting_enabled,
                         terminal_font_id,
+                        terminal_font_size,
+                        terminal_font_size_shortcuts_enabled,
                     ],
                 )
             })

@@ -29,6 +29,7 @@ import {
   readClipboardText,
   writeClipboardText,
 } from "@/lib/clipboard";
+import { getPrimaryShortcutModifierLabel } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 import { getSessionPresentation } from "../sessionPresentation";
@@ -38,6 +39,10 @@ import type {
   TerminalDimensions,
 } from "../sessionTypes";
 import { registerTerminalLinks } from "../terminalLinks";
+import {
+  adjustTerminalFontSize,
+  getTerminalFontSizeShortcut,
+} from "../terminalFontSize";
 import { TerminalSemanticHighlighter } from "../terminalSemanticHighlighter";
 import {
   createTerminalTheme,
@@ -50,6 +55,15 @@ const INPUT_FLUSH_DELAY_MS = 8;
 const INPUT_FLUSH_SIZE_BYTES = 4 * 1024;
 const RESIZE_DEBOUNCE_MS = 60;
 
+function applyFontSize(terminal: Terminal, fontSize: number, fit: () => void) {
+  if (terminal.options.fontSize === fontSize) {
+    return;
+  }
+  terminal.options.fontSize = fontSize;
+  terminal.refresh(0, terminal.rows - 1);
+  fit();
+}
+
 type TerminalPaneProps = {
   tab: SshSessionTab;
   isActive: boolean;
@@ -57,6 +71,9 @@ type TerminalPaneProps = {
   themeProfileId: TerminalThemeProfileId;
   isSemanticHighlightingEnabled: boolean;
   fontFamily: string;
+  fontSize: number;
+  isFontSizeShortcutsEnabled: boolean;
+  onFontSizeChange: (fontSize: number) => Promise<number>;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
   onInput: (localId: string, data: Uint8Array) => Promise<void>;
@@ -71,6 +88,9 @@ export function TerminalPane({
   themeProfileId,
   isSemanticHighlightingEnabled,
   fontFamily,
+  fontSize,
+  isFontSizeShortcutsEnabled,
+  onFontSizeChange,
   onStart,
   onRegisterOutput,
   onInput,
@@ -85,19 +105,38 @@ export function TerminalPane({
     themeProfileId,
     isSemanticHighlightingEnabled,
     fontFamily,
+    fontSize,
+    isFontSizeShortcutsEnabled,
   });
+  const fontSizeChangeRef = useRef(onFontSizeChange);
+  const persistedFontSizeRef = useRef(fontSize);
+  const fontSizeRequestRef = useRef({ version: 0, isPending: false });
   const fitRef = useRef<(() => void) | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const isVisible = isActive && isWorkspaceVisible;
   const presentation = getSessionPresentation(tab);
+  const shortcutModifier = getPrimaryShortcutModifierLabel();
 
   useEffect(() => {
-    appearanceRef.current = {
-      themeProfileId,
-      isSemanticHighlightingEnabled,
-      fontFamily,
-    };
-  }, [fontFamily, isSemanticHighlightingEnabled, themeProfileId]);
+    appearanceRef.current.themeProfileId = themeProfileId;
+    appearanceRef.current.isSemanticHighlightingEnabled = isSemanticHighlightingEnabled;
+    appearanceRef.current.fontFamily = fontFamily;
+    appearanceRef.current.isFontSizeShortcutsEnabled = isFontSizeShortcutsEnabled;
+    fontSizeChangeRef.current = onFontSizeChange;
+  }, [
+    fontFamily,
+    isFontSizeShortcutsEnabled,
+    isSemanticHighlightingEnabled,
+    onFontSizeChange,
+    themeProfileId,
+  ]);
+
+  useEffect(() => {
+    persistedFontSizeRef.current = fontSize;
+    if (!fontSizeRequestRef.current.isPending) {
+      appearanceRef.current.fontSize = fontSize;
+    }
+  }, [fontSize]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -112,7 +151,7 @@ export function TerminalPane({
       disableStdin: true,
       drawBoldTextInBrightColors: true,
       fontFamily: appearanceRef.current.fontFamily,
-      fontSize: 13,
+      fontSize: appearanceRef.current.fontSize,
       lineHeight: 1.25,
       scrollback: 10_000,
       smoothScrollDuration: 100,
@@ -197,6 +236,60 @@ export function TerminalPane({
         fitAndStart();
       });
     };
+
+    terminal.attachCustomKeyEventHandler((event) => {
+      const direction = getTerminalFontSizeShortcut(event);
+      if (!appearanceRef.current.isFontSizeShortcutsEnabled || !direction) {
+        return true;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type !== "keydown" || event.repeat) {
+        return false;
+      }
+
+      const nextFontSize = adjustTerminalFontSize(
+        appearanceRef.current.fontSize,
+        direction,
+      );
+      if (nextFontSize === appearanceRef.current.fontSize) {
+        return false;
+      }
+
+      appearanceRef.current.fontSize = nextFontSize;
+      applyFontSize(terminal, nextFontSize, scheduleFit);
+      const requestVersion = fontSizeRequestRef.current.version + 1;
+      fontSizeRequestRef.current = {
+        version: requestVersion,
+        isPending: true,
+      };
+      void fontSizeChangeRef
+        .current(nextFontSize)
+        .then((savedFontSize) => {
+          if (fontSizeRequestRef.current.version !== requestVersion) {
+            return;
+          }
+          fontSizeRequestRef.current.isPending = false;
+          persistedFontSizeRef.current = savedFontSize;
+          appearanceRef.current.fontSize = savedFontSize;
+          if (terminalRef.current === terminal) {
+            applyFontSize(terminal, savedFontSize, scheduleFit);
+          }
+        })
+        .catch(() => {
+          if (fontSizeRequestRef.current.version !== requestVersion) {
+            return;
+          }
+          fontSizeRequestRef.current.isPending = false;
+          const persistedFontSize = persistedFontSizeRef.current;
+          appearanceRef.current.fontSize = persistedFontSize;
+          if (terminalRef.current === terminal) {
+            applyFontSize(terminal, persistedFontSize, scheduleFit);
+          }
+        });
+      return false;
+    });
 
     fitRef.current = scheduleFit;
     const unregisterOutput = onRegisterOutput(tab.localId, (data) => {
@@ -283,6 +376,15 @@ export function TerminalPane({
 
   useEffect(() => {
     const terminal = terminalRef.current;
+    if (!terminal || fontSizeRequestRef.current.isPending) {
+      return;
+    }
+    appearanceRef.current.fontSize = fontSize;
+    applyFontSize(terminal, fontSize, () => fitRef.current?.());
+  }, [fontSize]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
     if (!terminal || !isVisible) {
       return;
     }
@@ -354,7 +456,7 @@ export function TerminalPane({
             >
               <Copy />
               复制
-              <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+              <ContextMenuShortcut>{shortcutModifier}C</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuItem
               disabled={tab.snapshot?.state !== "connected" || !canReadClipboardText()}
@@ -362,12 +464,12 @@ export function TerminalPane({
             >
               <ClipboardPaste />
               粘贴
-              <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+              <ContextMenuShortcut>{shortcutModifier}V</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuItem onSelect={() => terminalRef.current?.selectAll()}>
               <TextSelect />
               全选
-              <ContextMenuShortcut>⌘A</ContextMenuShortcut>
+              <ContextMenuShortcut>{shortcutModifier}A</ContextMenuShortcut>
             </ContextMenuItem>
           </ContextMenuGroup>
           <ContextMenuSeparator />

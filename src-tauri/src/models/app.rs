@@ -13,6 +13,8 @@ pub struct AppPreferences {
     pub confirm_before_exit: bool,
     pub terminal_semantic_highlighting_enabled: bool,
     pub terminal_font_id: String,
+    pub terminal_font_size: i64,
+    pub terminal_font_size_shortcuts_enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -21,4 +23,6 @@ pub struct UpdateAppPreferencesInput {
     pub confirm_before_exit: bool,
     pub terminal_semantic_highlighting_enabled: bool,
     pub terminal_font_id: String,
+    pub terminal_font_size: i64,
+    pub terminal_font_size_shortcuts_enabled: bool,
 }

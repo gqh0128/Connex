@@ -27,6 +27,7 @@ import type { AppPreferences } from "@/types/app";
 import type { TerminalFontsController } from "@/features/terminal/hooks/useTerminalFonts";
 
 import { TerminalFontSettings } from "./TerminalFontSettings";
+import { TerminalFontSizeSettings } from "./TerminalFontSizeSettings";
 
 type SettingsWorkspaceProps = {
   appPreferences: AppPreferences;
@@ -234,6 +235,15 @@ export function SettingsWorkspace({
                 appPreferencesError={appPreferencesError}
                 onAppPreferencesChange={onAppPreferencesChange}
                 terminalFonts={terminalFonts}
+              />
+
+              <Separator />
+
+              <TerminalFontSizeSettings
+                appPreferences={appPreferences}
+                isAppPreferencesLoading={isAppPreferencesLoading}
+                appPreferencesError={appPreferencesError}
+                onAppPreferencesChange={onAppPreferencesChange}
               />
             </FieldGroup>
           </div>

@@ -26,6 +26,7 @@ import type { TerminalFontsController } from "@/features/terminal/hooks/useTermi
 import type { TerminalThemeProfileId } from "@/features/terminal/terminalThemeProfiles";
 import { useFileTransfers } from "@/features/transfers/hooks/useFileTransfers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { hasPrimaryShortcutModifier } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { AppPreferences } from "@/types/app";
 import {
@@ -117,6 +118,12 @@ export function AppShell({
     connectionSidebarRef.current?.openCreateForm();
   }, [onViewChange]);
 
+  const updateTerminalFontSize = useCallback(
+    async (fontSize: number) =>
+      (await onAppPreferencesChange({ terminalFontSize: fontSize })).terminalFontSize,
+    [onAppPreferencesChange],
+  );
+
   useEffect(() => {
     activeSessionIdRef.current = activeSession?.id ?? null;
     remoteFilesRef.current = remoteFiles;
@@ -161,7 +168,7 @@ export function AppShell({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+      if (!hasPrimaryShortcutModifier(event)) {
         return;
       }
 
@@ -282,6 +289,11 @@ export function AppShell({
                           appPreferences.terminalSemanticHighlightingEnabled
                         }
                         fontFamily={terminalFonts.activeFontFamily}
+                        fontSize={appPreferences.terminalFontSize}
+                        isFontSizeShortcutsEnabled={
+                          appPreferences.terminalFontSizeShortcutsEnabled
+                        }
+                        onFontSizeChange={updateTerminalFontSize}
                         onNewConnection={openNewConnection}
                         onStart={sshSessions.startSession}
                         onRegisterOutput={sshSessions.registerOutputHandler}

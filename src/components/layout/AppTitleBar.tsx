@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TransferPopover } from "@/features/transfers/components/TransferPopover";
 import type { FileTransfersController } from "@/features/transfers/hooks/useFileTransfers";
+import { isMacOSPlatform } from "@/lib/platform";
 import type { AppView, WorkspacePageId } from "@/types/navigation";
 
 type AppTitleBarProps = {
@@ -13,17 +14,13 @@ type AppTitleBarProps = {
   onPageOpen: (pageId: WorkspacePageId) => void;
 };
 
-function isMacOS() {
-  return /Macintosh|Mac OS X/.test(window.navigator.userAgent);
-}
-
 export function AppTitleBar({
   activeView,
   activeContextLabel,
   transfers,
   onPageOpen,
 }: AppTitleBarProps) {
-  const isMacPlatform = isMacOS();
+  const isMacPlatform = isMacOSPlatform();
   const isSettingsOpen = activeView === "settings";
   const activeLabel = isSettingsOpen ? "设置" : (activeContextLabel ?? "欢迎");
 

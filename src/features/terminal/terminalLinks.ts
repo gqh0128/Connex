@@ -1,6 +1,10 @@
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import type { IDisposable, ILinkHandler, Terminal } from "@xterm/xterm";
 
+import {
+  getPrimaryShortcutModifierLabel,
+  hasPrimaryShortcutModifier,
+} from "@/lib/platform";
 import { openExternalHttpUrl } from "@/lib/tauri/opener";
 
 export function registerTerminalLinks(
@@ -19,7 +23,7 @@ export function registerTerminalLinks(
   const showTooltip = (uri: string, status?: string) => {
     tooltip.textContent = status
       ? `${uri}\n${status}`
-      : `${uri}\n${isMacPlatform() ? "⌘" : "Ctrl"} + 点击打开`;
+      : `${uri}\n${getPrimaryShortcutModifierLabel()} + 点击打开`;
     tooltip.hidden = false;
   };
   const activate = (event: MouseEvent, uri: string) => {
@@ -59,9 +63,5 @@ export function registerTerminalLinks(
 }
 
 function hasRequiredModifier(event: MouseEvent) {
-  return isMacPlatform() ? event.metaKey : event.ctrlKey;
-}
-
-function isMacPlatform() {
-  return /Mac|iPhone|iPad|iPod/u.test(navigator.platform);
+  return hasPrimaryShortcutModifier(event);
 }

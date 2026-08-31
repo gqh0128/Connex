@@ -16,6 +16,7 @@ import type {
   TerminalDimensions,
 } from "@/features/terminal/sessionTypes";
 import type { TerminalThemeProfileId } from "@/features/terminal/terminalThemeProfiles";
+import { getPrimaryShortcutModifierLabel } from "@/lib/platform";
 
 import { TerminalPane } from "./TerminalPane";
 
@@ -26,6 +27,9 @@ type TerminalWorkspaceProps = {
   themeProfileId: TerminalThemeProfileId;
   isSemanticHighlightingEnabled: boolean;
   fontFamily: string;
+  fontSize: number;
+  isFontSizeShortcutsEnabled: boolean;
+  onFontSizeChange: (fontSize: number) => Promise<number>;
   onNewConnection: () => void;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
@@ -41,6 +45,9 @@ export function TerminalWorkspace({
   themeProfileId,
   isSemanticHighlightingEnabled,
   fontFamily,
+  fontSize,
+  isFontSizeShortcutsEnabled,
+  onFontSizeChange,
   onNewConnection,
   onStart,
   onRegisterOutput,
@@ -48,6 +55,8 @@ export function TerminalWorkspace({
   onResize,
   onClose,
 }: TerminalWorkspaceProps) {
+  const shortcutModifier = getPrimaryShortcutModifierLabel();
+
   return (
     <section className="relative h-full min-h-0 min-w-0 overflow-hidden bg-terminal">
       {tabs.length === 0 ? (
@@ -73,7 +82,7 @@ export function TerminalWorkspace({
               <Command className="size-3" />
               <span>按</span>
               <kbd className="rounded border bg-surface px-1.5 py-0.5 font-mono text-[10px]">
-                ⌘ N
+                {shortcutModifier} N
               </kbd>
               <span>新建连接</span>
             </div>
@@ -90,6 +99,9 @@ export function TerminalWorkspace({
           themeProfileId={themeProfileId}
           isSemanticHighlightingEnabled={isSemanticHighlightingEnabled}
           fontFamily={fontFamily}
+          fontSize={fontSize}
+          isFontSizeShortcutsEnabled={isFontSizeShortcutsEnabled}
+          onFontSizeChange={onFontSizeChange}
           onStart={onStart}
           onRegisterOutput={onRegisterOutput}
           onInput={onInput}

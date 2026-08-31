@@ -11,6 +11,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../migrations/0005_create_app_settings.sql"),
     include_str!("../../migrations/0006_add_terminal_preferences.sql"),
     include_str!("../../migrations/0007_add_terminal_fonts.sql"),
+    include_str!("../../migrations/0008_add_terminal_font_size.sql"),
 ];
 
 #[derive(Clone)]
