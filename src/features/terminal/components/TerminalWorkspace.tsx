@@ -15,6 +15,7 @@ import type {
   SshSessionTab,
   TerminalDimensions,
 } from "@/features/terminal/sessionTypes";
+import type { TerminalThemeProfileId } from "@/features/terminal/terminalThemeProfiles";
 
 import { TerminalPane } from "./TerminalPane";
 
@@ -22,6 +23,8 @@ type TerminalWorkspaceProps = {
   tabs: SshSessionTab[];
   activeTabId: string | null;
   isWorkspaceVisible: boolean;
+  themeProfileId: TerminalThemeProfileId;
+  isSemanticHighlightingEnabled: boolean;
   onNewConnection: () => void;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
@@ -34,6 +37,8 @@ export function TerminalWorkspace({
   tabs,
   activeTabId,
   isWorkspaceVisible,
+  themeProfileId,
+  isSemanticHighlightingEnabled,
   onNewConnection,
   onStart,
   onRegisterOutput,
@@ -80,6 +85,8 @@ export function TerminalWorkspace({
           tab={tab}
           isActive={tab.localId === activeTabId}
           isWorkspaceVisible={isWorkspaceVisible}
+          themeProfileId={themeProfileId}
+          isSemanticHighlightingEnabled={isSemanticHighlightingEnabled}
           onStart={onStart}
           onRegisterOutput={onRegisterOutput}
           onInput={onInput}

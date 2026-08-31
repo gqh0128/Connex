@@ -19,31 +19,44 @@ import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { ConnectionBackupSettings } from "./ConnectionBackupSettings";
+import {
+  getTerminalThemeProfile,
+  type TerminalThemeProfileId,
+} from "@/features/terminal/terminalThemeProfiles";
+import type { AppPreferences } from "@/types/app";
 
 type SettingsWorkspaceProps = {
-  confirmBeforeExit: boolean;
+  appPreferences: AppPreferences;
   isAppPreferencesLoading: boolean;
   appPreferencesError: string | null;
-  onConfirmBeforeExitChange: (confirmBeforeExit: boolean) => Promise<void>;
+  onAppPreferencesChange: (changes: Partial<AppPreferences>) => Promise<AppPreferences>;
+  terminalThemeProfileId: TerminalThemeProfileId;
   onConnectionsImported: () => void;
 };
 
 export function SettingsWorkspace({
-  confirmBeforeExit,
+  appPreferences,
   isAppPreferencesLoading,
   appPreferencesError,
-  onConfirmBeforeExitChange,
+  onAppPreferencesChange,
+  terminalThemeProfileId,
   onConnectionsImported,
 }: SettingsWorkspaceProps) {
   const { mode, resolvedTheme, setMode } = useTheme();
   const [isSavingExitPreference, setIsSavingExitPreference] = useState(false);
   const [exitPreferenceError, setExitPreferenceError] = useState<string | null>(null);
+  const [isSavingSemanticHighlighting, setIsSavingSemanticHighlighting] =
+    useState(false);
+  const [semanticHighlightingError, setSemanticHighlightingError] = useState<
+    string | null
+  >(null);
+  const terminalThemeProfile = getTerminalThemeProfile(terminalThemeProfileId);
 
   const updateExitPreference = async (nextValue: boolean) => {
     setIsSavingExitPreference(true);
     setExitPreferenceError(null);
     try {
-      await onConfirmBeforeExitChange(nextValue);
+      await onAppPreferencesChange({ confirmBeforeExit: nextValue });
     } catch {
       setExitPreferenceError("无法保存退出设置，请稍后重试。");
     } finally {
@@ -53,6 +66,24 @@ export function SettingsWorkspace({
 
   const displayedExitPreferenceError = exitPreferenceError ?? appPreferencesError;
   const isExitPreferenceDisabled = isAppPreferencesLoading || isSavingExitPreference;
+  const displayedSemanticHighlightingError =
+    semanticHighlightingError ?? appPreferencesError;
+  const isSemanticHighlightingDisabled =
+    isAppPreferencesLoading || isSavingSemanticHighlighting;
+
+  const updateSemanticHighlighting = async (nextValue: boolean) => {
+    setIsSavingSemanticHighlighting(true);
+    setSemanticHighlightingError(null);
+    try {
+      await onAppPreferencesChange({
+        terminalSemanticHighlightingEnabled: nextValue,
+      });
+    } catch {
+      setSemanticHighlightingError("无法保存终端高亮设置，请稍后重试。");
+    } finally {
+      setIsSavingSemanticHighlighting(false);
+    }
+  };
 
   return (
     <ScrollArea className="min-h-0 flex-1 bg-workspace">
@@ -86,7 +117,7 @@ export function SettingsWorkspace({
                 </FieldContent>
                 <Checkbox
                   id="confirm-before-exit"
-                  checked={confirmBeforeExit}
+                  checked={appPreferences.confirmBeforeExit}
                   disabled={isExitPreferenceDisabled}
                   aria-invalid={Boolean(displayedExitPreferenceError)}
                   onCheckedChange={(checked) =>
@@ -158,6 +189,36 @@ export function SettingsWorkspace({
                   <TerminalSquare className="size-4 text-muted-foreground" />
                   <Badge variant="secondary">跟随应用</Badge>
                 </div>
+              </Field>
+
+              <Separator />
+
+              <Field
+                orientation="horizontal"
+                className="p-5"
+                data-disabled={isSemanticHighlightingDisabled}
+                data-invalid={Boolean(displayedSemanticHighlightingError)}
+              >
+                <FieldContent>
+                  <FieldLabel htmlFor="terminal-semantic-highlighting">
+                    终端语义高亮
+                  </FieldLabel>
+                  <FieldDescription>
+                    使用 {terminalThemeProfile.label}{" "}
+                    识别链接、命令选项、路径、环境变量和主机地址；远端 ANSI
+                    配色保持优先。
+                  </FieldDescription>
+                  <FieldError>{displayedSemanticHighlightingError}</FieldError>
+                </FieldContent>
+                <Checkbox
+                  id="terminal-semantic-highlighting"
+                  checked={appPreferences.terminalSemanticHighlightingEnabled}
+                  disabled={isSemanticHighlightingDisabled}
+                  aria-invalid={Boolean(displayedSemanticHighlightingError)}
+                  onCheckedChange={(checked) =>
+                    void updateSemanticHighlighting(checked === true)
+                  }
+                />
               </Field>
             </FieldGroup>
           </div>

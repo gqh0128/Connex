@@ -1,14 +1,11 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getAppPreferences, updateAppPreferences } from "@/lib/tauri/app";
 import { getCommandError } from "@/lib/tauri/errors";
 import type { CommandError } from "@/types/ipc";
 
 export type ExitConfirmationController = {
   confirmBeforeExit: boolean;
-  isPreferencesLoading: boolean;
-  preferenceError: CommandError | null;
   isPromptOpen: boolean;
   shouldRememberChoice: boolean;
   isExiting: boolean;
@@ -19,23 +16,27 @@ export type ExitConfirmationController = {
   confirmExit: () => Promise<void>;
 };
 
-export function useExitConfirmation(): ExitConfirmationController {
+type UseExitConfirmationOptions = {
+  confirmBeforeExit: boolean;
+  onConfirmBeforeExitChange: (confirmBeforeExit: boolean) => Promise<void>;
+};
+
+export function useExitConfirmation({
+  confirmBeforeExit,
+  onConfirmBeforeExitChange,
+}: UseExitConfirmationOptions): ExitConfirmationController {
   const appWindowRef = useRef(getCurrentWindow());
-  const confirmBeforeExitRef = useRef(true);
+  const confirmBeforeExitRef = useRef(confirmBeforeExit);
   const isPromptOpenRef = useRef(false);
   const isDestroyingRef = useRef(false);
-  const [confirmBeforeExit, setConfirmBeforeExitState] = useState(true);
-  const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
-  const [preferenceError, setPreferenceError] = useState<CommandError | null>(null);
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const [shouldRememberChoice, setShouldRememberChoice] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [exitError, setExitError] = useState<CommandError | null>(null);
 
-  const applyConfirmBeforeExit = useCallback((nextValue: boolean) => {
-    confirmBeforeExitRef.current = nextValue;
-    setConfirmBeforeExitState(nextValue);
-  }, []);
+  useEffect(() => {
+    confirmBeforeExitRef.current = confirmBeforeExit;
+  }, [confirmBeforeExit]);
 
   const openPrompt = useCallback(() => {
     if (isPromptOpenRef.current) {
@@ -62,32 +63,6 @@ export function useExitConfirmation(): ExitConfirmationController {
       throw error;
     }
   }, []);
-
-  useEffect(() => {
-    let isDisposed = false;
-
-    void getAppPreferences()
-      .then((preferences) => {
-        if (!isDisposed) {
-          applyConfirmBeforeExit(preferences.confirmBeforeExit);
-          setPreferenceError(null);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!isDisposed) {
-          setPreferenceError(getCommandError(error));
-        }
-      })
-      .finally(() => {
-        if (!isDisposed) {
-          setIsPreferencesLoading(false);
-        }
-      });
-
-    return () => {
-      isDisposed = true;
-    };
-  }, [applyConfirmBeforeExit]);
 
   useEffect(() => {
     let isDisposed = false;
@@ -119,7 +94,7 @@ export function useExitConfirmation(): ExitConfirmationController {
       })
       .catch((error: unknown) => {
         if (!isDisposed) {
-          setPreferenceError(getCommandError(error));
+          setExitError(getCommandError(error));
         }
       });
 
@@ -131,13 +106,9 @@ export function useExitConfirmation(): ExitConfirmationController {
 
   const setConfirmBeforeExit = useCallback(
     async (nextValue: boolean) => {
-      const preferences = await updateAppPreferences({
-        confirmBeforeExit: nextValue,
-      });
-      applyConfirmBeforeExit(preferences.confirmBeforeExit);
-      setPreferenceError(null);
+      await onConfirmBeforeExitChange(nextValue);
     },
-    [applyConfirmBeforeExit],
+    [onConfirmBeforeExitChange],
   );
 
   const cancelExit = useCallback(() => {
@@ -167,8 +138,6 @@ export function useExitConfirmation(): ExitConfirmationController {
 
   return {
     confirmBeforeExit,
-    isPreferencesLoading,
-    preferenceError,
     isPromptOpen,
     shouldRememberChoice,
     isExiting,

@@ -1,9 +1,11 @@
 import { useCallback, useState } from "react";
 
 import { ExitConfirmationDialog } from "@/app/ExitConfirmationDialog";
+import { useAppPreferences } from "@/app/useAppPreferences";
 import { useExitConfirmation } from "@/app/useExitConfirmation";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSshSessions } from "@/features/terminal/hooks/useSshSessions";
+import { DEFAULT_TERMINAL_THEME_PROFILE_ID } from "@/features/terminal/terminalThemeProfiles";
 import {
   WORKSPACE_PAGE_DEFINITIONS,
   type AppView,
@@ -15,7 +17,13 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>("workspace");
   const [openPageIds, setOpenPageIds] = useState<WorkspacePageId[]>([]);
   const sshSessions = useSshSessions();
-  const exitConfirmation = useExitConfirmation();
+  const appPreferences = useAppPreferences();
+  const exitConfirmation = useExitConfirmation({
+    confirmBeforeExit: appPreferences.preferences.confirmBeforeExit,
+    onConfirmBeforeExitChange: async (confirmBeforeExit) => {
+      await appPreferences.update({ confirmBeforeExit });
+    },
+  });
 
   const openPage = useCallback((pageId: WorkspacePageId) => {
     setOpenPageIds((current) =>
@@ -39,10 +47,11 @@ export function App() {
         pageTabs={openPageIds.map((pageId) => WORKSPACE_PAGE_DEFINITIONS[pageId])}
         onPageOpen={openPage}
         onPageClose={closePage}
-        confirmBeforeExit={exitConfirmation.confirmBeforeExit}
-        isAppPreferencesLoading={exitConfirmation.isPreferencesLoading}
-        appPreferencesError={exitConfirmation.preferenceError?.message ?? null}
-        onConfirmBeforeExitChange={exitConfirmation.setConfirmBeforeExit}
+        appPreferences={appPreferences.preferences}
+        isAppPreferencesLoading={appPreferences.isLoading}
+        appPreferencesError={appPreferences.error?.message ?? null}
+        onAppPreferencesChange={appPreferences.update}
+        terminalThemeProfileId={DEFAULT_TERMINAL_THEME_PROFILE_ID}
         sshSessions={sshSessions}
       />
       <ExitConfirmationDialog controller={exitConfirmation} />

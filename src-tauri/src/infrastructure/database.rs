@@ -9,6 +9,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../migrations/0003_track_stored_credentials.sql"),
     include_str!("../../migrations/0004_encrypt_connection_credentials.sql"),
     include_str!("../../migrations/0005_create_app_settings.sql"),
+    include_str!("../../migrations/0006_add_terminal_preferences.sql"),
 ];
 
 #[derive(Clone)]

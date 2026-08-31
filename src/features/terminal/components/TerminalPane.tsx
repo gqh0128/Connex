@@ -37,7 +37,14 @@ import type {
   SshSessionTab,
   TerminalDimensions,
 } from "../sessionTypes";
-import { createTerminalTheme, getCurrentResolvedTheme } from "../terminalTheme";
+import { registerTerminalLinks } from "../terminalLinks";
+import { TerminalSemanticHighlighter } from "../terminalSemanticHighlighter";
+import {
+  createTerminalTheme,
+  getCurrentResolvedTheme,
+  getTerminalSemanticPalette,
+} from "../terminalTheme";
+import type { TerminalThemeProfileId } from "../terminalThemeProfiles";
 
 const INPUT_FLUSH_DELAY_MS = 8;
 const INPUT_FLUSH_SIZE_BYTES = 4 * 1024;
@@ -47,6 +54,8 @@ type TerminalPaneProps = {
   tab: SshSessionTab;
   isActive: boolean;
   isWorkspaceVisible: boolean;
+  themeProfileId: TerminalThemeProfileId;
+  isSemanticHighlightingEnabled: boolean;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
   onInput: (localId: string, data: Uint8Array) => Promise<void>;
@@ -58,6 +67,8 @@ export function TerminalPane({
   tab,
   isActive,
   isWorkspaceVisible,
+  themeProfileId,
+  isSemanticHighlightingEnabled,
   onStart,
   onRegisterOutput,
   onInput,
@@ -67,10 +78,19 @@ export function TerminalPane({
   const { resolvedTheme } = useTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const semanticHighlighterRef = useRef<TerminalSemanticHighlighter | null>(null);
+  const appearanceRef = useRef({
+    themeProfileId,
+    isSemanticHighlightingEnabled,
+  });
   const fitRef = useRef<(() => void) | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const isVisible = isActive && isWorkspaceVisible;
   const presentation = getSessionPresentation(tab);
+
+  useEffect(() => {
+    appearanceRef.current = { themeProfileId, isSemanticHighlightingEnabled };
+  }, [isSemanticHighlightingEnabled, themeProfileId]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -79,7 +99,7 @@ export function TerminalPane({
     }
 
     const terminal = new Terminal({
-      allowProposedApi: false,
+      allowProposedApi: true,
       cursorBlink: true,
       cursorInactiveStyle: "outline",
       disableStdin: true,
@@ -91,12 +111,25 @@ export function TerminalPane({
       lineHeight: 1.25,
       scrollback: 10_000,
       smoothScrollDuration: 100,
-      theme: createTerminalTheme(getCurrentResolvedTheme()),
+      theme: createTerminalTheme(
+        getCurrentResolvedTheme(),
+        appearanceRef.current.themeProfileId,
+      ),
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(host);
     terminalRef.current = terminal;
+    const terminalLinks = registerTerminalLinks(terminal, host);
+    const semanticHighlighter = new TerminalSemanticHighlighter(
+      terminal,
+      getTerminalSemanticPalette(
+        getCurrentResolvedTheme(),
+        appearanceRef.current.themeProfileId,
+      ),
+      appearanceRef.current.isSemanticHighlightingEnabled,
+    );
+    semanticHighlighterRef.current = semanticHighlighter;
 
     let fitAnimationFrame: number | null = null;
     let resizeTimer: number | null = null;
@@ -206,6 +239,11 @@ export function TerminalPane({
       if (fitRef.current === scheduleFit) {
         fitRef.current = null;
       }
+      terminalLinks.dispose();
+      semanticHighlighter.dispose();
+      if (semanticHighlighterRef.current === semanticHighlighter) {
+        semanticHighlighterRef.current = null;
+      }
       terminal.dispose();
       terminalRef.current = null;
     };
@@ -217,9 +255,16 @@ export function TerminalPane({
       return;
     }
 
-    terminal.options.theme = createTerminalTheme(resolvedTheme);
+    terminal.options.theme = createTerminalTheme(resolvedTheme, themeProfileId);
+    semanticHighlighterRef.current?.setPalette(
+      getTerminalSemanticPalette(resolvedTheme, themeProfileId),
+    );
     fitRef.current?.();
-  }, [resolvedTheme]);
+  }, [resolvedTheme, themeProfileId]);
+
+  useEffect(() => {
+    semanticHighlighterRef.current?.setEnabled(isSemanticHighlightingEnabled);
+  }, [isSemanticHighlightingEnabled]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -277,7 +322,7 @@ export function TerminalPane({
             <div
               ref={hostRef}
               data-visible={isVisible}
-              className="connex-terminal h-full min-h-0 w-full overflow-hidden"
+              className="connex-terminal relative h-full min-h-0 w-full overflow-hidden"
             />
           </div>
         </ContextMenuTrigger>

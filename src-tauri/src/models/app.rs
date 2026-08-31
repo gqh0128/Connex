@@ -11,10 +11,12 @@ pub struct AppInfo {
 #[serde(rename_all = "camelCase")]
 pub struct AppPreferences {
     pub confirm_before_exit: bool,
+    pub terminal_semantic_highlighting_enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateAppPreferencesInput {
     pub confirm_before_exit: bool,
+    pub terminal_semantic_highlighting_enabled: bool,
 }

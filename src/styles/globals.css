@@ -163,6 +163,31 @@ button:not(:disabled) {
     transparent;
 }
 
+.connex-terminal-link-tooltip {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  max-width: min(32rem, calc(100% - 20px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--popover);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  color: var(--popover-foreground);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 7px 9px;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: pre-line;
+}
+
+.connex-terminal-link-tooltip[hidden] {
+  display: none;
+}
+
 ::selection {
   background: color-mix(in oklab, var(--primary) 24%, transparent);
 }

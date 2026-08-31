@@ -1,44 +1,12 @@
 import type { ITheme } from "@xterm/xterm";
 
 import type { ResolvedTheme } from "@/app/theme";
-
-const LIGHT_ANSI = {
-  black: "#2E3440",
-  red: "#C93C4A",
-  green: "#1D7A4D",
-  yellow: "#8A5A00",
-  blue: "#2457A6",
-  magenta: "#7A3E9D",
-  cyan: "#0B6B75",
-  white: "#4B5563",
-  brightBlack: "#6B7280",
-  brightRed: "#D13445",
-  brightGreen: "#178052",
-  brightYellow: "#986000",
-  brightBlue: "#2F6FD0",
-  brightMagenta: "#9854B7",
-  brightCyan: "#0F7482",
-  brightWhite: "#374151",
-} satisfies ITheme;
-
-const DARK_ANSI = {
-  black: "#1C222B",
-  red: "#FF6B7A",
-  green: "#42D392",
-  yellow: "#E5C07B",
-  blue: "#61AFEF",
-  magenta: "#C678DD",
-  cyan: "#56B6C2",
-  white: "#D6DEE8",
-  brightBlack: "#747D8D",
-  brightRed: "#FF8793",
-  brightGreen: "#63E6AE",
-  brightYellow: "#F0D399",
-  brightBlue: "#82C7FF",
-  brightMagenta: "#D79AE8",
-  brightCyan: "#75D1DA",
-  brightWhite: "#F4F7FA",
-} satisfies ITheme;
+import {
+  DEFAULT_TERMINAL_THEME_PROFILE_ID,
+  getTerminalThemeProfile,
+  type TerminalSemanticPalette,
+  type TerminalThemeProfileId,
+} from "./terminalThemeProfiles";
 
 const FALLBACKS = {
   light: {
@@ -57,15 +25,19 @@ const FALLBACKS = {
   },
 } as const;
 
-export function createTerminalTheme(resolvedTheme: ResolvedTheme): ITheme {
+export function createTerminalTheme(
+  resolvedTheme: ResolvedTheme,
+  profileId: TerminalThemeProfileId = DEFAULT_TERMINAL_THEME_PROFILE_ID,
+): ITheme {
   const fallback = FALLBACKS[resolvedTheme];
+  const profile = getTerminalThemeProfile(profileId);
   const background = resolveCssToken("--terminal", fallback.background);
   const foreground = resolveCssToken("--foreground", fallback.foreground);
   const cursor = resolveCssToken("--primary", fallback.cursor);
   const muted = resolveCssToken("--muted-foreground", fallback.muted);
 
   return {
-    ...(resolvedTheme === "dark" ? DARK_ANSI : LIGHT_ANSI),
+    ...profile.variants[resolvedTheme].ansi,
     background,
     foreground,
     cursor,
@@ -76,6 +48,13 @@ export function createTerminalTheme(resolvedTheme: ResolvedTheme): ITheme {
     scrollbarSliderHoverBackground: withAlpha(muted, 0.42),
     scrollbarSliderActiveBackground: withAlpha(muted, 0.56),
   };
+}
+
+export function getTerminalSemanticPalette(
+  resolvedTheme: ResolvedTheme,
+  profileId: TerminalThemeProfileId = DEFAULT_TERMINAL_THEME_PROFILE_ID,
+): TerminalSemanticPalette {
+  return getTerminalThemeProfile(profileId).variants[resolvedTheme].semantic;
 }
 
 export function getCurrentResolvedTheme(): ResolvedTheme {

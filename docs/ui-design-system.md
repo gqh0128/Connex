@@ -115,9 +115,10 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 - 设置是中央工作区中的完整页面，不放进小型 Dialog。
 - 设置由全局栏右侧图标按钮打开为工作区标签；重复点击只聚焦已有标签，不创建副本。返回会话通过点击对应会话标签完成，关闭设置使用标签叉号或 `Cmd/Ctrl+W`。
 - 设置页“通用”区域提供“退出前确认”复选框。用户记住直接退出后可在此重新开启；读取和保存期间禁用控件，失败信息显示在字段内。
+- 设置页“外观”区域提供“终端语义高亮”复选框，默认开启。关闭后只停用 Connex 附加的语义 decoration，不影响远端 ANSI、URL 悬停与链接打开能力。
 - 打开设置只在视觉上隐藏会话工作区，不能卸载终端实例或关闭 SSH 会话；切回会话标签后重新适配当前终端尺寸并恢复焦点。
 - 设置分类位于页面左侧，内容区使用标题、说明和 `Field` 组合；每个分组只解决一个主题。
-- 外观设置使用三项 `ToggleGroup`：跟随系统、浅色、深色。终端默认跟随应用主题，后续可提供独立终端配色选项。
+- 外观设置使用三项 `ToggleGroup`：跟随系统、浅色、深色。终端默认跟随应用主题；出现第二套真实终端主题时，将当前 profile 状态升级为单选选择器，选择结果使用稳定 profile ID 持久化。
 - “连接备份”与外观设置并列为独立分组，使用两个紧凑操作入口打开导出或导入 `Dialog`，不把完整表单直接常驻在设置页。
 - 导出 Dialog 必须要求导出密码和确认密码；凭据范围使用二选一 `ToggleGroup`，默认“包含密码和口令”，另一个选项为“仅连接信息”。v1 不复制私钥文件，仅迁移其路径与可选口令；未来若增加私钥文件打包，必须使用独立显式选项且默认关闭。没有导出密码时提交后显示字段错误。
 - 导入 Dialog 先选择 `.connex-backup` 文件并输入导出密码，再展示连接数量、凭据包含情况和冲突数量。冲突处理使用“覆盖、跳过、保留两份”三项选择；导入完成前不关闭 Dialog，成功结果在原位置反馈。
@@ -203,6 +204,8 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 
 xterm theme adapter 从当前主题读取 `terminal`、`foreground`、`primary` 和 selection token，再注入 xterm.js。默认 ANSI 16 色固定为 Connex Neutral，避免不同功能自行选择 Solarized、One Dark 等不一致主题。
 
+终端主题以 profile 注册；每个 profile 同时提供浅色/深色 ANSI palette 和语义 palette。文本识别规则与 profile 解耦，不得为不同主题复制正则或 buffer 扫描逻辑。当前唯一 profile ID 为 `connex-neutral`，用户选择能力等出现第二套真实主题后再开放。
+
 | ANSI    | 浅色      | 深色      | Bright 浅色 | Bright 深色 |
 | ------- | --------- | --------- | ----------- | ----------- |
 | Black   | `#2E3440` | `#1C222B` | `#6B7280`   | `#747D8D`   |
@@ -214,9 +217,21 @@ xterm theme adapter 从当前主题读取 `terminal`、`foreground`、`primary` 
 | Cyan    | `#0B6B75` | `#56B6C2` | `#0F7482`   | `#75D1DA`   |
 | White   | `#4B5563` | `#D6DEE8` | `#374151`   | `#F4F7FA`   |
 
+Connex Neutral 的附加语义色固定如下：
+
+| 内容     | 浅色      | 深色      | 识别范围                                   |
+| -------- | --------- | --------- | ------------------------------------------ |
+| URL      | `#2457A6` | `#82C7FF` | `http://`、`https://` 明文链接             |
+| 命令选项 | `#ff6f00` | `#ff6f00` | `--xxx` 长选项                             |
+| 路径     | `#0B6B75` | `#75D1DA` | Linux 绝对路径、`~/`、`./`、提示符当前目录 |
+| 环境变量 | `#7A3E9D` | `#D79AE8` | `$HOME` 形式                               |
+| 主机     | `#1D7A4D` | `#63E6AE` | IPv4/端口和提示符 `user@host`              |
+
 - 光标使用 `primary`，selection 使用 `primary` 的 `20%` 透明混合色，非活动选择使用 `muted-foreground` 的 `18%` 混合色。
-- 终端链接、搜索命中和 Bell 提示必须使用独立装饰方式，不能覆盖远端程序的 ANSI 前景色。
-- 用户自定义终端主题属于后续增强。加入该能力时保存为独立 terminal profile，不修改全局应用 token。
+- 语义色只覆盖默认属性 cell，使用底层 decoration，让 selection 和远端 ANSI 保持优先；alternate buffer 不启用语义高亮。
+- 明文 URL 和 OSC 8 链接只允许通过受限 Tauri opener 打开 `http`/`https`，macOS 需要 `Cmd+点击`，其他平台需要 `Ctrl+点击`；悬停必须显示完整目标。
+- 搜索命中和 Bell 提示继续使用独立装饰方式，不能复用语义前景色。
+- 用户自定义终端主题属于后续增强。加入该能力时注册独立 terminal profile，不修改全局应用 token 或语义识别规则。
 
 ## 8. shadcn/ui 组件映射
 
@@ -263,7 +278,7 @@ xterm theme adapter 从当前主题读取 `terminal`、`foreground`、`primary` 
 以下规则属于合并前检查项：
 
 - 新视觉值必须先判断能否复用现有 spacing、radius 或颜色 token。
-- 全局主题值只在 `src/styles/globals.css` 定义；xterm ANSI 色只在 terminal theme 模块定义。
+- 全局主题值只在 `src/styles/globals.css` 定义；xterm ANSI 与语义 palette 只在 `terminalThemeProfiles.ts` 定义。
 - 新布局不得绕过本文规定的面板层级和宽度让渡顺序。
 - 对布局、主题、状态映射或组件基线的有意变更，必须与本文同一提交更新。
 - 每完成一个用户可见模块，都要在浅色、深色和跟随系统三种模式下做一次本地渲染检查。

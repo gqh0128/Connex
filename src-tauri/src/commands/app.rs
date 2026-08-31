@@ -17,10 +17,12 @@ pub async fn get_app_preferences(
     repository: State<'_, AppSettingsRepository>,
 ) -> Result<AppPreferences, CommandError> {
     repository
-        .confirm_before_exit()
+        .preferences()
         .await
-        .map(|confirm_before_exit| AppPreferences {
-            confirm_before_exit,
+        .map(|preferences| AppPreferences {
+            confirm_before_exit: preferences.confirm_before_exit,
+            terminal_semantic_highlighting_enabled: preferences
+                .terminal_semantic_highlighting_enabled,
         })
         .map_err(Into::into)
 }
@@ -31,10 +33,14 @@ pub async fn update_app_preferences(
     repository: State<'_, AppSettingsRepository>,
 ) -> Result<AppPreferences, CommandError> {
     repository
-        .set_confirm_before_exit(input.confirm_before_exit)
+        .set_preferences(
+            input.confirm_before_exit,
+            input.terminal_semantic_highlighting_enabled,
+        )
         .await
         .map(|()| AppPreferences {
             confirm_before_exit: input.confirm_before_exit,
+            terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
         })
         .map_err(Into::into)
 }

@@ -22,9 +22,11 @@ import { useRemoteFiles } from "@/features/sftp/hooks/useRemoteFiles";
 import { HostKeyVerificationDialog } from "@/features/terminal/components/HostKeyVerificationDialog";
 import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorkspace";
 import type { SshSessionsController } from "@/features/terminal/hooks/useSshSessions";
+import type { TerminalThemeProfileId } from "@/features/terminal/terminalThemeProfiles";
 import { useFileTransfers } from "@/features/transfers/hooks/useFileTransfers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
+import type { AppPreferences } from "@/types/app";
 import {
   WORKSPACE_PAGE_DEFINITIONS,
   type AppView,
@@ -45,10 +47,11 @@ type AppShellProps = {
   pageTabs: WorkspacePageTab[];
   onPageOpen: (pageId: WorkspacePageId) => void;
   onPageClose: (pageId: WorkspacePageId) => void;
-  confirmBeforeExit: boolean;
+  appPreferences: AppPreferences;
   isAppPreferencesLoading: boolean;
   appPreferencesError: string | null;
-  onConfirmBeforeExitChange: (confirmBeforeExit: boolean) => Promise<void>;
+  onAppPreferencesChange: (changes: Partial<AppPreferences>) => Promise<AppPreferences>;
+  terminalThemeProfileId: TerminalThemeProfileId;
   sshSessions: SshSessionsController;
 };
 
@@ -60,10 +63,11 @@ export function AppShell({
   pageTabs,
   onPageOpen,
   onPageClose,
-  confirmBeforeExit,
+  appPreferences,
   isAppPreferencesLoading,
   appPreferencesError,
-  onConfirmBeforeExitChange,
+  onAppPreferencesChange,
+  terminalThemeProfileId,
   sshSessions,
 }: AppShellProps) {
   const isWideWorkspace = useMediaQuery(WIDE_WORKSPACE_QUERY);
@@ -270,6 +274,10 @@ export function AppShell({
                         tabs={sshSessions.tabs}
                         activeTabId={sshSessions.activeTabId}
                         isWorkspaceVisible={activeView === "workspace"}
+                        themeProfileId={terminalThemeProfileId}
+                        isSemanticHighlightingEnabled={
+                          appPreferences.terminalSemanticHighlightingEnabled
+                        }
                         onNewConnection={openNewConnection}
                         onStart={sshSessions.startSession}
                         onRegisterOutput={sshSessions.registerOutputHandler}
@@ -316,10 +324,11 @@ export function AppShell({
                   className="absolute inset-0 min-w-0 bg-workspace"
                 >
                   <SettingsWorkspace
-                    confirmBeforeExit={confirmBeforeExit}
+                    appPreferences={appPreferences}
                     isAppPreferencesLoading={isAppPreferencesLoading}
                     appPreferencesError={appPreferencesError}
-                    onConfirmBeforeExitChange={onConfirmBeforeExitChange}
+                    onAppPreferencesChange={onAppPreferencesChange}
+                    terminalThemeProfileId={terminalThemeProfileId}
                     onConnectionsImported={() =>
                       void connectionSidebarRef.current?.refreshConnections()
                     }

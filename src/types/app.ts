@@ -5,8 +5,7 @@ export type AppInfo = {
 
 export type AppPreferences = {
   confirmBeforeExit: boolean;
+  terminalSemanticHighlightingEnabled: boolean;
 };
 
-export type UpdateAppPreferencesInput = {
-  confirmBeforeExit: boolean;
-};
+export type UpdateAppPreferencesInput = AppPreferences;
