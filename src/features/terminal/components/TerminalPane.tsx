@@ -43,6 +43,7 @@ import {
   adjustTerminalFontSize,
   getTerminalFontSizeShortcut,
 } from "../terminalFontSize";
+import { isTerminalSystemModifierOnlyEvent } from "../terminalKeyEvents";
 import { normalizeTerminalLineHeight } from "../terminalLineHeight";
 import { TerminalSemanticHighlighter } from "../terminalSemanticHighlighter";
 import {
@@ -266,6 +267,10 @@ export function TerminalPane({
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
+      if (isTerminalSystemModifierOnlyEvent(event)) {
+        return false;
+      }
+
       const direction = getTerminalFontSizeShortcut(event);
       if (!appearanceRef.current.isFontSizeShortcutsEnabled || !direction) {
         return true;
