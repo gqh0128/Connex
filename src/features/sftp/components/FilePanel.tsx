@@ -524,7 +524,7 @@ function RemoteFileRow({
           tabIndex={0}
           aria-selected={isSelected}
           className={cn(
-            "grid min-h-8 cursor-default grid-cols-[minmax(0,1fr)_4.5rem_4rem] items-center border-b px-3 text-xs outline-none last:border-b-0 hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=open]:bg-accent",
+            "grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_4.5rem_4rem] items-center border-b px-3 text-xs outline-none last:border-b-0 hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=open]:bg-accent",
             isSelected && "bg-accent text-accent-foreground",
           )}
           title={entry.kind === "directory" ? "双击打开目录" : undefined}
