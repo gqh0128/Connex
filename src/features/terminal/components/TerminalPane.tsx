@@ -43,6 +43,7 @@ import {
   adjustTerminalFontSize,
   getTerminalFontSizeShortcut,
 } from "../terminalFontSize";
+import { normalizeTerminalLineHeight } from "../terminalLineHeight";
 import { TerminalSemanticHighlighter } from "../terminalSemanticHighlighter";
 import {
   createTerminalTheme,
@@ -64,6 +65,16 @@ function applyFontSize(terminal: Terminal, fontSize: number, fit: () => void) {
   fit();
 }
 
+function applyLineHeight(terminal: Terminal, lineHeight: number, fit: () => void) {
+  const nextLineHeight = normalizeTerminalLineHeight(lineHeight);
+  if (terminal.options.lineHeight === nextLineHeight) {
+    return;
+  }
+  terminal.options.lineHeight = nextLineHeight;
+  terminal.refresh(0, terminal.rows - 1);
+  fit();
+}
+
 type TerminalPaneProps = {
   tab: SshSessionTab;
   isActive: boolean;
@@ -71,7 +82,10 @@ type TerminalPaneProps = {
   themeProfileId: TerminalThemeProfileId;
   isSemanticHighlightingEnabled: boolean;
   fontFamily: string;
+  fontWeight: number;
+  fontWeightBold: number;
   fontSize: number;
+  lineHeight: number;
   isFontSizeShortcutsEnabled: boolean;
   onFontSizeChange: (fontSize: number) => Promise<number>;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
@@ -88,7 +102,10 @@ export function TerminalPane({
   themeProfileId,
   isSemanticHighlightingEnabled,
   fontFamily,
+  fontWeight,
+  fontWeightBold,
   fontSize,
+  lineHeight,
   isFontSizeShortcutsEnabled,
   onFontSizeChange,
   onStart,
@@ -105,7 +122,10 @@ export function TerminalPane({
     themeProfileId,
     isSemanticHighlightingEnabled,
     fontFamily,
+    fontWeight,
+    fontWeightBold,
     fontSize,
+    lineHeight,
     isFontSizeShortcutsEnabled,
   });
   const fontSizeChangeRef = useRef(onFontSizeChange);
@@ -121,14 +141,20 @@ export function TerminalPane({
     appearanceRef.current.themeProfileId = themeProfileId;
     appearanceRef.current.isSemanticHighlightingEnabled = isSemanticHighlightingEnabled;
     appearanceRef.current.fontFamily = fontFamily;
+    appearanceRef.current.fontWeight = fontWeight;
+    appearanceRef.current.fontWeightBold = fontWeightBold;
+    appearanceRef.current.lineHeight = lineHeight;
     appearanceRef.current.isFontSizeShortcutsEnabled = isFontSizeShortcutsEnabled;
     fontSizeChangeRef.current = onFontSizeChange;
   }, [
     fontFamily,
+    fontWeight,
+    fontWeightBold,
     isFontSizeShortcutsEnabled,
     isSemanticHighlightingEnabled,
     onFontSizeChange,
     themeProfileId,
+    lineHeight,
   ]);
 
   useEffect(() => {
@@ -151,8 +177,10 @@ export function TerminalPane({
       disableStdin: true,
       drawBoldTextInBrightColors: true,
       fontFamily: appearanceRef.current.fontFamily,
+      fontWeight: appearanceRef.current.fontWeight,
+      fontWeightBold: appearanceRef.current.fontWeightBold,
       fontSize: appearanceRef.current.fontSize,
-      lineHeight: 1.25,
+      lineHeight: appearanceRef.current.lineHeight,
       scrollback: 10_000,
       smoothScrollDuration: 100,
       theme: createTerminalTheme(
@@ -366,13 +394,20 @@ export function TerminalPane({
 
   useEffect(() => {
     const terminal = terminalRef.current;
-    if (!terminal || terminal.options.fontFamily === fontFamily) {
+    if (
+      !terminal ||
+      (terminal.options.fontFamily === fontFamily &&
+        terminal.options.fontWeight === fontWeight &&
+        terminal.options.fontWeightBold === fontWeightBold)
+    ) {
       return;
     }
     terminal.options.fontFamily = fontFamily;
+    terminal.options.fontWeight = fontWeight;
+    terminal.options.fontWeightBold = fontWeightBold;
     terminal.refresh(0, terminal.rows - 1);
     fitRef.current?.();
-  }, [fontFamily]);
+  }, [fontFamily, fontWeight, fontWeightBold]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -382,6 +417,14 @@ export function TerminalPane({
     appearanceRef.current.fontSize = fontSize;
     applyFontSize(terminal, fontSize, () => fitRef.current?.());
   }, [fontSize]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+    applyLineHeight(terminal, lineHeight, () => fitRef.current?.());
+  }, [lineHeight]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

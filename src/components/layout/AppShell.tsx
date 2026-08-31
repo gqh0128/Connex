@@ -24,6 +24,7 @@ import { TerminalWorkspace } from "@/features/terminal/components/TerminalWorksp
 import type { SshSessionsController } from "@/features/terminal/hooks/useSshSessions";
 import type { TerminalFontsController } from "@/features/terminal/hooks/useTerminalFonts";
 import type { TerminalThemeProfileId } from "@/features/terminal/terminalThemeProfiles";
+import { getTerminalBoldFontWeight } from "@/features/terminal/terminalFontWeight";
 import { useFileTransfers } from "@/features/transfers/hooks/useFileTransfers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { hasPrimaryShortcutModifier } from "@/lib/platform";
@@ -289,7 +290,12 @@ export function AppShell({
                           appPreferences.terminalSemanticHighlightingEnabled
                         }
                         fontFamily={terminalFonts.activeFontFamily}
+                        fontWeight={appPreferences.terminalFontWeight}
+                        fontWeightBold={getTerminalBoldFontWeight(
+                          appPreferences.terminalFontWeight,
+                        )}
                         fontSize={appPreferences.terminalFontSize}
+                        lineHeight={appPreferences.terminalLineHeight}
                         isFontSizeShortcutsEnabled={
                           appPreferences.terminalFontSizeShortcutsEnabled
                         }

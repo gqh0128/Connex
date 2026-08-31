@@ -3,34 +3,19 @@
 
 @font-face {
   font-family: "Connex JetBrains Mono";
-  src: url("../assets/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2") format("woff2");
+  src: url("../assets/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf")
+    format("truetype-variations");
   font-style: normal;
-  font-weight: 400;
+  font-weight: 100 800;
   font-display: block;
 }
 
 @font-face {
   font-family: "Connex JetBrains Mono";
-  src: url("../assets/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 700;
-  font-display: block;
-}
-
-@font-face {
-  font-family: "Connex JetBrains Mono";
-  src: url("../assets/fonts/jetbrains-mono/JetBrainsMono-Italic.woff2") format("woff2");
+  src: url("../assets/fonts/jetbrains-mono/JetBrainsMono-VariableItalic.ttf")
+    format("truetype-variations");
   font-style: italic;
-  font-weight: 400;
-  font-display: block;
-}
-
-@font-face {
-  font-family: "Connex JetBrains Mono";
-  src: url("../assets/fonts/jetbrains-mono/JetBrainsMono-BoldItalic.woff2")
-    format("woff2");
-  font-style: italic;
-  font-weight: 700;
+  font-weight: 100 800;
   font-display: block;
 }
 
@@ -188,6 +173,11 @@ button:not(:disabled) {
 
 .connex-terminal .xterm {
   height: 100%;
+}
+
+.connex-terminal {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
 }
 
 .connex-terminal .xterm-viewport {

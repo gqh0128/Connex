@@ -7,7 +7,9 @@ export type AppPreferences = {
   confirmBeforeExit: boolean;
   terminalSemanticHighlightingEnabled: boolean;
   terminalFontId: string;
+  terminalFontWeight: number;
   terminalFontSize: number;
+  terminalLineHeight: number;
   terminalFontSizeShortcutsEnabled: boolean;
 };
 

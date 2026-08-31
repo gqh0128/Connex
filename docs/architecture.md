@@ -50,9 +50,11 @@ SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只�
 
 每个会话标签对应一个长期存活的 xterm 实例。切换会话或页面标签、打开设置和展开或收起文件面板只改变可见性或面板尺寸，不能卸载仍存在的终端。React 开发模式重复挂载时，会话 hook 必须保证同一标签只启动一次 Rust 会话，并让后挂载的终端重新接管输出处理器。
 
-终端外观拆为三个独立层次：`terminalThemeProfiles` 保存稳定 profile ID、ANSI palette 和语义 palette；`terminalSemanticRules` 只负责把普通 buffer 文本识别为 URL、命令选项、路径、环境变量、主机/IP 或 Shell 提示符片段；`TerminalSemanticHighlighter` 把匹配结果适配为 xterm cell decoration。React 组合层只传递 profile ID 和是否启用语义高亮，切换设置或 palette 只刷新现有 xterm 实例，不能重建会话。新增主题只注册新的 profile，不复制识别规则或终端生命周期代码。
+终端外观拆为三个独立层次：`terminalThemeProfiles` 保存稳定 profile ID、终端前景色、ANSI palette 和语义 palette；`terminalSemanticRules` 只负责把普通 buffer 文本识别为 URL、命令选项、路径、环境变量、主机/IP 或 Shell 提示符片段；`TerminalSemanticHighlighter` 把匹配结果适配为 xterm cell decoration。React 组合层只传递 profile ID 和是否启用语义高亮，切换设置或 palette 只刷新现有 xterm 实例，不能重建会话。新增主题只注册新的 profile，不复制识别规则或终端生命周期代码。
 
-终端字体使用独立于主题的 profile 注册表。`terminalFontProfiles` 只描述内置预设的稳定 ID、展示信息和 xterm `fontFamily`；`terminalFontLoader` 负责等待内置 Web Font 或把自定义字体 raw bytes 注册为浏览器 `FontFace`；`useTerminalFonts` 负责编排列表、加载状态和导入/删除操作。字号范围、默认值、步长和快捷键识别集中在 `terminalFontSize`，平台主修饰键识别集中在 `lib/platform`。React 只把解析后的字体栈和持久化字号传给 xterm，切换字体或字号必须刷新现有实例并重新 fit，不得修改应用 UI 字体或重建 SSH 会话。增加新的内置字体只注册 profile 并提供本地字体资源，不复制设置页或 xterm 生命周期代码。
+终端字体使用独立于主题的 profile 注册表。`terminalFontProfiles` 只描述内置预设的稳定 ID、展示信息和 xterm `fontFamily`；`terminalFontLoader` 负责等待内置 Web Font 或把自定义字体 raw bytes 注册为浏览器 `FontFace`；`useTerminalFonts` 负责编排列表、加载状态和导入/删除操作。字重范围、默认值、步长以及粗体派生规则集中在 `terminalFontWeight`，字号范围、默认值、步长和快捷键识别集中在 `terminalFontSize`，行距范围、默认值、步长与格式化集中在 `terminalLineHeight`，平台主修饰键识别集中在 `lib/platform`。React 只把解析后的字体族、持久化字重、字号和行距传给 xterm，切换这些设置必须刷新现有实例并重新 fit，不得修改应用 UI 字体或重建 SSH 会话。增加新的内置字体只注册 profile 并提供本地字体资源，不复制设置页或 xterm 生命周期代码。
+
+设置页的 `TerminalAppearancePreview` 使用独立、只读的 xterm.js 实例渲染固定终端样例，并复用正式终端的 theme profile、字体族、字重、字号和行距参数。预览不连接 SSH、不注册链接或语义扫描器，样例颜色直接从当前 profile 的语义 palette 生成 ANSI 序列；调整外观设置时只更新预览实例，不把预览状态写回会话。
 
 ## 4. Rust 架构
 

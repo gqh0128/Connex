@@ -11,7 +11,7 @@ import {
 const bundledLoads = new Map<string, Promise<void>>();
 const customFaces = new Map<string, Promise<FontFace>>();
 
-export async function loadTerminalFontFamily(
+export async function loadTerminalFont(
   selectionId: string,
   customFonts: readonly CustomTerminalFont[],
 ) {
@@ -26,7 +26,7 @@ export async function loadTerminalFontFamily(
   const id = customTerminalFontId(selectionId);
   const customFont = id ? customFonts.find((font) => font.id === id) : null;
   if (!customFont) {
-    return loadDefaultTerminalFontFamily();
+    return loadDefaultTerminalFont();
   }
 
   const familyName = customFontFamilyName(customFont.id);
@@ -61,7 +61,7 @@ export function releaseCustomTerminalFont(id: string) {
   }
 }
 
-async function loadDefaultTerminalFontFamily() {
+async function loadDefaultTerminalFont() {
   const profile = getTerminalFontProfile(DEFAULT_TERMINAL_FONT_ID);
   if (!profile) {
     return SYSTEM_MONOSPACE_FONT_FAMILY;

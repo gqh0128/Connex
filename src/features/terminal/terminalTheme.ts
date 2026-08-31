@@ -11,14 +11,12 @@ import {
 const FALLBACKS = {
   light: {
     background: "#FCFCFD",
-    foreground: "#25262B",
     cursor: "#20A66A",
     cursorAccent: "#FCFCFD",
     muted: "#70727A",
   },
   dark: {
     background: "#111318",
-    foreground: "#E8E9ED",
     cursor: "#48D597",
     cursorAccent: "#111318",
     muted: "#9B9DA5",
@@ -32,7 +30,7 @@ export function createTerminalTheme(
   const fallback = FALLBACKS[resolvedTheme];
   const profile = getTerminalThemeProfile(profileId);
   const background = resolveCssToken("--terminal", fallback.background);
-  const foreground = resolveCssToken("--foreground", fallback.foreground);
+  const foreground = profile.variants[resolvedTheme].foreground;
   const cursor = resolveCssToken("--primary", fallback.cursor);
   const muted = resolveCssToken("--muted-foreground", fallback.muted);
 

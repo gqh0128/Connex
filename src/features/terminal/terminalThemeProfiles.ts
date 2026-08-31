@@ -14,6 +14,7 @@ export type TerminalSemanticPalette = Readonly<
 >;
 
 type TerminalThemeVariant = {
+  foreground: string;
   ansi: Readonly<ITheme>;
   semantic: TerminalSemanticPalette;
 };
@@ -29,6 +30,7 @@ const CONNEX_NEUTRAL_PROFILE = {
   label: "Connex Neutral",
   variants: {
     light: {
+      foreground: "#15171A",
       ansi: {
         black: "#2E3440",
         red: "#C93C4A",
@@ -56,6 +58,7 @@ const CONNEX_NEUTRAL_PROFILE = {
       },
     },
     dark: {
+      foreground: "#E8E9ED",
       ansi: {
         black: "#1C222B",
         red: "#FF6B7A",

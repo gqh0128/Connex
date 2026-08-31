@@ -119,6 +119,7 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 - 设置页“通用”区域提供“退出前确认”复选框。用户记住直接退出后可在此重新开启；读取和保存期间禁用控件，失败信息显示在字段内。
 - 设置页“外观”区域提供“终端语义高亮”复选框，默认开启。关闭后只停用 Connex 附加的语义 decoration，不影响远端 ANSI、URL 悬停与链接打开能力。
 - 设置页“外观”区域提供终端字体选择器和“导入字体”操作。选择器用稳定 profile ID 同时列出内置预设与已导入字体；导入支持不超过 10 MiB 的 TTF、OTF、WOFF 和 WOFF2，成功后立即选中并应用到所有 xterm 会话。删除自定义字体必须使用 `AlertDialog`，只删除 Connex 保存的副本，不处理用户原始文件。
+- 字体设置上方提供只读 xterm.js 预览，固定展示 Ubuntu 欢迎信息、常用 URL、`user@host` 提示符、路径、命令选项和构建结果。预览必须复用正式终端的主题、字体、字重、字号与行距，并在设置变化后立即刷新；不得连接 SSH 或获取真实会话内容。
 - 设置页“外观”区域提供 9–32 px 的终端字号设置，使用紧凑 `InputGroup` 组合减小按钮、数值输入、单位和增大按钮。另设“快捷键调整字号”复选框，默认开启；终端获得焦点时，macOS 使用 `Command +/-`，Windows 和 Linux 使用 `Ctrl +/-`，主键盘与数字键盘加减键都应可用。
 - 打开设置只在视觉上隐藏会话工作区，不能卸载终端实例或关闭 SSH 会话；切回会话标签后重新适配当前终端尺寸并恢复焦点。
 - 设置分类位于页面左侧，内容区使用标题、说明和 `Field` 组合；每个分组只解决一个主题。
@@ -144,9 +145,9 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 | 主要操作           | 高 `36–40px`  |
 
 - UI 使用系统字体栈，不依赖网络字体：macOS 优先系统字体，Windows 优先 Segoe UI，中文回退到系统中文无衬线字体。
-- 终端默认 `13px`、可调范围 `9–32px`、步长 `1px`、行高 `1.25`，默认 profile 为内置 JetBrains Mono；同时提供 `SFMono-Regular`、`Cascadia Mono`、`Noto Sans Mono CJK SC`、Menlo、Consolas 和 `monospace` 组成的系统等宽回退 profile。
-- 内置 JetBrains Mono 使用仓库本地 WOFF2 的 Regular、Bold、Italic 和 BoldItalic，并保留 OFL 许可证，不从网络加载。内置预设通过 `terminalFontProfiles.ts` 注册；后续增加预设只添加字体资源和 profile，不能在设置组件或 `TerminalPane` 中增加字体名称分支。
-- 用户字体和字号只应用给 xterm.js 的 `fontFamily`、`fontSize`，不得修改 `--font-ui`、`--font-terminal` 或设置页等应用界面字体。字体异步加载或字号变化后刷新并重新 fit 现有终端，不重新连接 SSH。
+- 终端默认字重 `500`，可调范围 `100–800`、步长 `100`；粗体自动比正文增加两档并封顶 `800`。默认字号 `13px`，可调范围 `9–32px`、步长 `1px`；默认行距 `1.10`，可调范围 `1.00–2.00`、步长 `0.05`。默认 profile 为内置 JetBrains Mono；同时提供 `SFMono-Regular`、`Cascadia Mono`、`Noto Sans Mono CJK SC`、Menlo、Consolas 和 `monospace` 组成的系统等宽回退 profile。
+- 内置 JetBrains Mono 使用仓库本地可变字重 TTF，覆盖 `100–800` 正体和斜体，并保留 OFL 许可证，不从网络加载。字体族通过 `terminalFontProfiles.ts` 注册，用户字重作为独立偏好保存；后续增加预设只添加字体资源和 profile，不能在设置组件或 `TerminalPane` 中增加字体名称分支。
+- 用户字体、字重、字号和行距只应用给 xterm.js 的 `fontFamily`、`fontWeight`、`fontWeightBold`、`fontSize`、`lineHeight`，不得修改 `--font-ui`、`--font-terminal` 或设置页等应用界面字体。字体异步加载或文字度量变化后刷新并重新 fit 现有终端，不重新连接 SSH。单字重自定义字体可能无法响应字重调整，界面说明和预览必须如实反映字体能力。
 - 全局圆角基准为 `8px`。输入框和按钮使用 `6–8px`，卡片和浮层使用 `8–12px`；停靠面板和表格行不增加独立圆角。
 - 停靠区域只用 `1px` 边框分层；阴影仅用于 Popover、Dropdown、Sheet 和 Dialog。
 - 图标统一使用 Lucide。常规图标视觉尺寸 `16px`，紧凑辅助图标 `14px`；单图标按钮必须带 Tooltip 和可访问名称。
@@ -208,9 +209,9 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 
 ## 7. 终端配色
 
-xterm theme adapter 从当前主题读取 `terminal`、`foreground`、`primary` 和 selection token，再注入 xterm.js。默认 ANSI 16 色固定为 Connex Neutral，避免不同功能自行选择 Solarized、One Dark 等不一致主题。
+xterm theme adapter 从当前应用主题读取 `terminal`、`primary` 和 selection token，并从终端 profile 读取正文前景色后注入 xterm.js。Connex Neutral 的浅色正文使用 `#15171A`，深色正文使用 `#E8E9ED`；默认 ANSI 16 色保持固定，避免不同功能自行选择不一致的主题。
 
-终端主题以 profile 注册；每个 profile 同时提供浅色/深色 ANSI palette 和语义 palette。文本识别规则与 profile 解耦，不得为不同主题复制正则或 buffer 扫描逻辑。当前唯一 profile ID 为 `connex-neutral`，用户选择能力等出现第二套真实主题后再开放。
+终端主题以 profile 注册；每个 profile 同时提供浅色/深色正文前景色、ANSI palette 和语义 palette。文本识别规则与 profile 解耦，不得为不同主题复制正则或 buffer 扫描逻辑。当前唯一 profile ID 为 `connex-neutral`，用户选择能力等出现第二套真实主题后再开放。
 
 | ANSI    | 浅色      | 深色      | Bright 浅色 | Bright 深色 |
 | ------- | --------- | --------- | ----------- | ----------- |
@@ -243,22 +244,22 @@ Connex Neutral 的附加语义色固定如下：
 
 业务界面优先组合 shadcn/ui 原语，避免重新手写等价的键盘、焦点和 overlay 行为。
 
-| 场景             | 组件基线                                                                     |
-| ---------------- | ---------------------------------------------------------------------------- |
-| 连接侧栏         | `Sidebar`、`ScrollArea`、`Collapsible`、`ContextMenu`                        |
-| 连接搜索         | `InputGroup`                                                                 |
-| 工作区标签与溢出 | `Tabs`、横向 `ScrollArea`、`DropdownMenu`、`ContextMenu`                     |
-| 工作区和面板尺寸 | `Resizable`                                                                  |
-| 新建/编辑连接    | `Dialog`、`FieldGroup`、`Field`、`Input`、`ToggleGroup`                      |
-| 连接导入/导出    | `Dialog`、`FieldSet`、`InputGroup`、`ToggleGroup`                            |
-| 三选一外观设置   | `ToggleGroup`                                                                |
-| 终端字体设置     | `Field`、`Popover`、`InputGroup`、`Checkbox`、`Button`、删除用 `AlertDialog` |
-| 文件路径和列表   | `Breadcrumb`、`Table`、`ContextMenu`                                         |
-| 传输任务         | `Popover`、`ScrollArea`、`Progress`、`Badge`                                 |
-| 空状态与加载     | `Empty`、`Skeleton`                                                          |
-| 安全和删除确认   | `AlertDialog`                                                                |
-| 非阻塞结果通知   | `Sonner`                                                                     |
-| 图标解释         | `Tooltip`                                                                    |
+| 场景             | 组件基线                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| 连接侧栏         | `Sidebar`、`ScrollArea`、`Collapsible`、`ContextMenu`                                       |
+| 连接搜索         | `InputGroup`                                                                                |
+| 工作区标签与溢出 | `Tabs`、横向 `ScrollArea`、`DropdownMenu`、`ContextMenu`                                    |
+| 工作区和面板尺寸 | `Resizable`                                                                                 |
+| 新建/编辑连接    | `Dialog`、`FieldGroup`、`Field`、`Input`、`ToggleGroup`                                     |
+| 连接导入/导出    | `Dialog`、`FieldSet`、`InputGroup`、`ToggleGroup`                                           |
+| 三选一外观设置   | `ToggleGroup`                                                                               |
+| 终端字体设置     | xterm.js 预览；`Field`、`Popover`、`InputGroup`、`Checkbox`、`Button`；删除用 `AlertDialog` |
+| 文件路径和列表   | `Breadcrumb`、`Table`、`ContextMenu`                                                        |
+| 传输任务         | `Popover`、`ScrollArea`、`Progress`、`Badge`                                                |
+| 空状态与加载     | `Empty`、`Skeleton`                                                                         |
+| 安全和删除确认   | `AlertDialog`                                                                               |
+| 非阻塞结果通知   | `Sonner`                                                                                    |
+| 图标解释         | `Tooltip`                                                                                   |
 
 组件的颜色和字体优先使用其现有 variant；`className` 主要负责布局。新增或更新组件时必须遵循仓库 `shadcn` skill 和 `AGENTS.md` 中的工作流。
 
@@ -285,7 +286,7 @@ Connex Neutral 的附加语义色固定如下：
 以下规则属于合并前检查项：
 
 - 新视觉值必须先判断能否复用现有 spacing、radius 或颜色 token。
-- 全局主题值只在 `src/styles/globals.css` 定义；xterm ANSI 与语义 palette 只在 `terminalThemeProfiles.ts` 定义。
+- 全局主题值只在 `src/styles/globals.css` 定义；xterm 正文前景色、ANSI 与语义 palette 只在 `terminalThemeProfiles.ts` 定义。
 - 新布局不得绕过本文规定的面板层级和宽度让渡顺序。
 - 对布局、主题、状态映射或组件基线的有意变更，必须与本文同一提交更新。
 - 每完成一个用户可见模块，都要在浅色、深色和跟随系统三种模式下做一次本地渲染检查。

@@ -15,10 +15,7 @@ import {
   customTerminalFontId,
   customTerminalFontSelectionId,
 } from "../terminalFontProfiles";
-import {
-  loadTerminalFontFamily,
-  releaseCustomTerminalFont,
-} from "../terminalFontLoader";
+import { loadTerminalFont, releaseCustomTerminalFont } from "../terminalFontLoader";
 
 export type TerminalFontOption = {
   id: string;
@@ -75,7 +72,7 @@ export function useTerminalFonts(selectionId: string): TerminalFontsController {
       return;
     }
     let isDisposed = false;
-    void loadTerminalFontFamily(selectionId, customFonts)
+    void loadTerminalFont(selectionId, customFonts)
       .then((fontFamily) => {
         if (!isDisposed) {
           setActiveFontFamily(fontFamily);

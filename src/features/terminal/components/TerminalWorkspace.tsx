@@ -27,7 +27,10 @@ type TerminalWorkspaceProps = {
   themeProfileId: TerminalThemeProfileId;
   isSemanticHighlightingEnabled: boolean;
   fontFamily: string;
+  fontWeight: number;
+  fontWeightBold: number;
   fontSize: number;
+  lineHeight: number;
   isFontSizeShortcutsEnabled: boolean;
   onFontSizeChange: (fontSize: number) => Promise<number>;
   onNewConnection: () => void;
@@ -45,7 +48,10 @@ export function TerminalWorkspace({
   themeProfileId,
   isSemanticHighlightingEnabled,
   fontFamily,
+  fontWeight,
+  fontWeightBold,
   fontSize,
+  lineHeight,
   isFontSizeShortcutsEnabled,
   onFontSizeChange,
   onNewConnection,
@@ -99,7 +105,10 @@ export function TerminalWorkspace({
           themeProfileId={themeProfileId}
           isSemanticHighlightingEnabled={isSemanticHighlightingEnabled}
           fontFamily={fontFamily}
+          fontWeight={fontWeight}
+          fontWeightBold={fontWeightBold}
           fontSize={fontSize}
+          lineHeight={lineHeight}
           isFontSizeShortcutsEnabled={isFontSizeShortcutsEnabled}
           onFontSizeChange={onFontSizeChange}
           onStart={onStart}

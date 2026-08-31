@@ -1,11 +1,16 @@
 use tauri::State;
 
-use crate::infrastructure::app_settings::AppSettingsRepository;
+use crate::infrastructure::app_settings::{AppSettingsRepository, StoredAppPreferences};
 use crate::models::app::{AppInfo, AppPreferences, UpdateAppPreferencesInput};
 use crate::models::error::CommandError;
 
 const TERMINAL_FONT_SIZE_MIN: i64 = 9;
 const TERMINAL_FONT_SIZE_MAX: i64 = 32;
+const TERMINAL_FONT_WEIGHT_MIN: i64 = 100;
+const TERMINAL_FONT_WEIGHT_MAX: i64 = 800;
+const TERMINAL_FONT_WEIGHT_STEP: i64 = 100;
+const TERMINAL_LINE_HEIGHT_MIN: f64 = 1.0;
+const TERMINAL_LINE_HEIGHT_MAX: f64 = 2.0;
 
 #[tauri::command]
 pub fn get_app_info() -> AppInfo {
@@ -27,7 +32,9 @@ pub async fn get_app_preferences(
             terminal_semantic_highlighting_enabled: preferences
                 .terminal_semantic_highlighting_enabled,
             terminal_font_id: preferences.terminal_font_id,
+            terminal_font_weight: preferences.terminal_font_weight,
             terminal_font_size: preferences.terminal_font_size,
+            terminal_line_height: preferences.terminal_line_height,
             terminal_font_size_shortcuts_enabled: preferences.terminal_font_size_shortcuts_enabled,
         })
         .map_err(Into::into)
@@ -38,6 +45,15 @@ pub async fn update_app_preferences(
     input: UpdateAppPreferencesInput,
     repository: State<'_, AppSettingsRepository>,
 ) -> Result<AppPreferences, CommandError> {
+    if !(TERMINAL_FONT_WEIGHT_MIN..=TERMINAL_FONT_WEIGHT_MAX).contains(&input.terminal_font_weight)
+        || input.terminal_font_weight % TERMINAL_FONT_WEIGHT_STEP != 0
+    {
+        return Err(CommandError {
+            code: "invalid_terminal_font_weight",
+            message: "终端字重必须是 100 到 800 之间的整百数值。",
+            field: Some("terminalFontWeight"),
+        });
+    }
     if !(TERMINAL_FONT_SIZE_MIN..=TERMINAL_FONT_SIZE_MAX).contains(&input.terminal_font_size) {
         return Err(CommandError {
             code: "invalid_terminal_font_size",
@@ -45,21 +61,35 @@ pub async fn update_app_preferences(
             field: Some("terminalFontSize"),
         });
     }
+    if !input.terminal_line_height.is_finite()
+        || !(TERMINAL_LINE_HEIGHT_MIN..=TERMINAL_LINE_HEIGHT_MAX)
+            .contains(&input.terminal_line_height)
+    {
+        return Err(CommandError {
+            code: "invalid_terminal_line_height",
+            message: "终端行距必须在 1.00 到 2.00 之间。",
+            field: Some("terminalLineHeight"),
+        });
+    }
 
     repository
-        .set_preferences(
-            input.confirm_before_exit,
-            input.terminal_semantic_highlighting_enabled,
-            input.terminal_font_id.clone(),
-            input.terminal_font_size,
-            input.terminal_font_size_shortcuts_enabled,
-        )
+        .set_preferences(StoredAppPreferences {
+            confirm_before_exit: input.confirm_before_exit,
+            terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
+            terminal_font_id: input.terminal_font_id.clone(),
+            terminal_font_weight: input.terminal_font_weight,
+            terminal_font_size: input.terminal_font_size,
+            terminal_line_height: input.terminal_line_height,
+            terminal_font_size_shortcuts_enabled: input.terminal_font_size_shortcuts_enabled,
+        })
         .await
         .map(|()| AppPreferences {
             confirm_before_exit: input.confirm_before_exit,
             terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
             terminal_font_id: input.terminal_font_id,
+            terminal_font_weight: input.terminal_font_weight,
             terminal_font_size: input.terminal_font_size,
+            terminal_line_height: input.terminal_line_height,
             terminal_font_size_shortcuts_enabled: input.terminal_font_size_shortcuts_enabled,
         })
         .map_err(Into::into)

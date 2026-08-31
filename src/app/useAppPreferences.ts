@@ -5,13 +5,17 @@ import { getCommandError } from "@/lib/tauri/errors";
 import type { AppPreferences } from "@/types/app";
 import type { CommandError } from "@/types/ipc";
 import { DEFAULT_TERMINAL_FONT_ID } from "@/features/terminal/terminalFontProfiles";
+import { DEFAULT_TERMINAL_FONT_WEIGHT } from "@/features/terminal/terminalFontWeight";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "@/features/terminal/terminalFontSize";
+import { DEFAULT_TERMINAL_LINE_HEIGHT } from "@/features/terminal/terminalLineHeight";
 
 const DEFAULT_APP_PREFERENCES: AppPreferences = {
   confirmBeforeExit: true,
   terminalSemanticHighlightingEnabled: true,
   terminalFontId: DEFAULT_TERMINAL_FONT_ID,
+  terminalFontWeight: DEFAULT_TERMINAL_FONT_WEIGHT,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  terminalLineHeight: DEFAULT_TERMINAL_LINE_HEIGHT,
   terminalFontSizeShortcutsEnabled: true,
 };
 

@@ -17,17 +17,18 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-
-import { ConnectionBackupSettings } from "./ConnectionBackupSettings";
+import type { TerminalFontsController } from "@/features/terminal/hooks/useTerminalFonts";
+import { getTerminalBoldFontWeight } from "@/features/terminal/terminalFontWeight";
 import {
   getTerminalThemeProfile,
   type TerminalThemeProfileId,
 } from "@/features/terminal/terminalThemeProfiles";
 import type { AppPreferences } from "@/types/app";
-import type { TerminalFontsController } from "@/features/terminal/hooks/useTerminalFonts";
 
+import { ConnectionBackupSettings } from "./ConnectionBackupSettings";
+import { TerminalAppearancePreview } from "./TerminalAppearancePreview";
 import { TerminalFontSettings } from "./TerminalFontSettings";
-import { TerminalFontSizeSettings } from "./TerminalFontSizeSettings";
+import { TerminalTypographySettings } from "./TerminalTypographySettings";
 
 type SettingsWorkspaceProps = {
   appPreferences: AppPreferences;
@@ -229,6 +230,19 @@ export function SettingsWorkspace({
 
               <Separator />
 
+              <TerminalAppearancePreview
+                themeProfileId={terminalThemeProfileId}
+                fontFamily={terminalFonts.activeFontFamily}
+                fontWeight={appPreferences.terminalFontWeight}
+                fontWeightBold={getTerminalBoldFontWeight(
+                  appPreferences.terminalFontWeight,
+                )}
+                fontSize={appPreferences.terminalFontSize}
+                lineHeight={appPreferences.terminalLineHeight}
+              />
+
+              <Separator />
+
               <TerminalFontSettings
                 appPreferences={appPreferences}
                 isAppPreferencesLoading={isAppPreferencesLoading}
@@ -239,7 +253,7 @@ export function SettingsWorkspace({
 
               <Separator />
 
-              <TerminalFontSizeSettings
+              <TerminalTypographySettings
                 appPreferences={appPreferences}
                 isAppPreferencesLoading={isAppPreferencesLoading}
                 appPreferencesError={appPreferencesError}

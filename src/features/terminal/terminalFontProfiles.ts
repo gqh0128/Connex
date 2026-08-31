@@ -35,10 +35,12 @@ export const TERMINAL_FONT_PROFILES = [
     description: "Connex 内置，针对代码和终端阅读优化。",
     fontFamily: `"${JETBRAINS_MONO_FAMILY}", ${SYSTEM_MONOSPACE_FONT_FAMILY}`,
     preloadFamilies: [
-      `400 13px "${JETBRAINS_MONO_FAMILY}"`,
-      `700 13px "${JETBRAINS_MONO_FAMILY}"`,
-      `italic 400 13px "${JETBRAINS_MONO_FAMILY}"`,
-      `italic 700 13px "${JETBRAINS_MONO_FAMILY}"`,
+      `100 13px "${JETBRAINS_MONO_FAMILY}"`,
+      `500 13px "${JETBRAINS_MONO_FAMILY}"`,
+      `800 13px "${JETBRAINS_MONO_FAMILY}"`,
+      `italic 100 13px "${JETBRAINS_MONO_FAMILY}"`,
+      `italic 500 13px "${JETBRAINS_MONO_FAMILY}"`,
+      `italic 800 13px "${JETBRAINS_MONO_FAMILY}"`,
     ],
   },
   {
