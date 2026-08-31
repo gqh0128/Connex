@@ -93,7 +93,7 @@ export function SettingsWorkspace({
   };
 
   return (
-    <ScrollArea className="min-h-0 flex-1 bg-workspace">
+    <ScrollArea className="h-full min-h-0 bg-workspace">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-8 py-10">
         <header className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold tracking-tight">设置</h1>
