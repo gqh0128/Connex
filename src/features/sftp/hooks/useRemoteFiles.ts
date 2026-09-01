@@ -32,147 +32,144 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
     isEnabled && session?.state === "connected" ? session.id : null;
   const connectedSessionIdRef = useRef(connectedSessionId);
   connectedSessionIdRef.current = connectedSessionId;
-  const requestIdRef = useRef(0);
-  const failedNavigationRef = useRef<NavigationRequest | null>(null);
-  const [remoteFiles, setRemoteFiles] = useState<RemoteFilesState>({
-    sessionId: null,
-    directory: null,
-    error: null,
-    isLoading: false,
-    history: [],
-    historyIndex: -1,
-  });
-  const currentRemoteFiles: RemoteFilesState =
-    remoteFiles.sessionId === connectedSessionId
-      ? remoteFiles
-      : {
-          sessionId: connectedSessionId,
-          directory: null,
-          error: null,
-          isLoading: connectedSessionId !== null,
-          history: [],
-          historyIndex: -1,
-        };
+  const requestIdsRef = useRef(new Map<string, number>());
+  const failedNavigationsRef = useRef(new Map<string, NavigationRequest>());
+  const initializedSessionIdsRef = useRef(new Set<string>());
+  const [remoteFilesBySession, setRemoteFilesBySession] = useState(
+    () => new Map<string, RemoteFilesState>(),
+  );
+  const currentRemoteFiles = connectedSessionId
+    ? (remoteFilesBySession.get(connectedSessionId) ??
+      createRemoteFilesState(connectedSessionId, true))
+    : createRemoteFilesState(null, false);
 
   const loadDirectory = useCallback(
-    async (navigation: NavigationRequest) => {
-      if (!connectedSessionId) {
-        return;
-      }
-
-      const requestId = ++requestIdRef.current;
-      setRemoteFiles((current) => ({
-        sessionId: connectedSessionId,
-        directory: current.sessionId === connectedSessionId ? current.directory : null,
-        error: null,
-        isLoading: true,
-        history: current.sessionId === connectedSessionId ? current.history : [],
-        historyIndex:
-          current.sessionId === connectedSessionId ? current.historyIndex : -1,
-      }));
+    async (sessionId: string, navigation: NavigationRequest) => {
+      const requestId = (requestIdsRef.current.get(sessionId) ?? 0) + 1;
+      requestIdsRef.current.set(sessionId, requestId);
+      setRemoteFilesBySession((current) => {
+        const sessionState =
+          current.get(sessionId) ?? createRemoteFilesState(sessionId, false);
+        const next = new Map(current);
+        next.set(sessionId, {
+          ...sessionState,
+          error: null,
+          isLoading: true,
+        });
+        return next;
+      });
 
       try {
-        const nextDirectory = await listRemoteDirectory(
-          connectedSessionId,
-          navigation.path,
-        );
-        if (requestIdRef.current === requestId) {
-          failedNavigationRef.current = null;
-          setRemoteFiles((current) => {
+        const nextDirectory = await listRemoteDirectory(sessionId, navigation.path);
+        if (requestIdsRef.current.get(sessionId) === requestId) {
+          failedNavigationsRef.current.delete(sessionId);
+          setRemoteFilesBySession((current) => {
+            const sessionState =
+              current.get(sessionId) ?? createRemoteFilesState(sessionId, true);
             const navigationState = applySuccessfulNavigation(
-              current.sessionId === connectedSessionId
-                ? current
-                : {
-                    sessionId: connectedSessionId,
-                    directory: null,
-                    error: null,
-                    isLoading: true,
-                    history: [],
-                    historyIndex: -1,
-                  },
+              sessionState,
               navigation,
               nextDirectory.path,
             );
-
-            return {
-              sessionId: connectedSessionId,
+            const next = new Map(current);
+            next.set(sessionId, {
+              ...sessionState,
               directory: nextDirectory,
               error: null,
               isLoading: false,
               ...navigationState,
-            };
+            });
+
+            return next;
           });
         }
       } catch (nextError) {
-        if (requestIdRef.current === requestId) {
-          failedNavigationRef.current = navigation;
-          setRemoteFiles((current) => ({
-            sessionId: connectedSessionId,
-            directory:
-              current.sessionId === connectedSessionId ? current.directory : null,
-            error: getCommandError(nextError),
-            isLoading: false,
-            history: current.sessionId === connectedSessionId ? current.history : [],
-            historyIndex:
-              current.sessionId === connectedSessionId ? current.historyIndex : -1,
-          }));
+        if (requestIdsRef.current.get(sessionId) === requestId) {
+          failedNavigationsRef.current.set(sessionId, navigation);
+          setRemoteFilesBySession((current) => {
+            const sessionState =
+              current.get(sessionId) ?? createRemoteFilesState(sessionId, false);
+            const next = new Map(current);
+            next.set(sessionId, {
+              ...sessionState,
+              error: getCommandError(nextError),
+              isLoading: false,
+            });
+            return next;
+          });
         }
       }
     },
-    [connectedSessionId],
+    [],
   );
 
   useEffect(() => {
-    requestIdRef.current += 1;
-    failedNavigationRef.current = null;
-
-    if (connectedSessionId) {
-      void loadDirectory({ mode: "reset" });
+    if (
+      connectedSessionId &&
+      !initializedSessionIdsRef.current.has(connectedSessionId)
+    ) {
+      initializedSessionIdsRef.current.add(connectedSessionId);
+      void loadDirectory(connectedSessionId, { mode: "reset" });
     }
-
-    return () => {
-      requestIdRef.current += 1;
-    };
   }, [connectedSessionId, loadDirectory]);
 
   const refresh = useCallback(() => {
-    void loadDirectory({
+    if (!connectedSessionId) {
+      return;
+    }
+    void loadDirectory(connectedSessionId, {
       path: currentRemoteFiles.directory?.path,
       mode: "replace",
     });
-  }, [currentRemoteFiles.directory?.path, loadDirectory]);
+  }, [connectedSessionId, currentRemoteFiles.directory?.path, loadDirectory]);
 
   const openDirectory = useCallback(
     (path: string) => {
-      void loadDirectory({ path, mode: "push" });
+      if (connectedSessionId) {
+        void loadDirectory(connectedSessionId, { path, mode: "push" });
+      }
     },
-    [loadDirectory],
+    [connectedSessionId, loadDirectory],
   );
 
   const goBack = useCallback(() => {
     const historyIndex = currentRemoteFiles.historyIndex - 1;
     const path = currentRemoteFiles.history[historyIndex];
-    if (path) {
-      void loadDirectory({ path, mode: "history", historyIndex });
+    if (connectedSessionId && path) {
+      void loadDirectory(connectedSessionId, { path, mode: "history", historyIndex });
     }
-  }, [currentRemoteFiles.history, currentRemoteFiles.historyIndex, loadDirectory]);
+  }, [
+    connectedSessionId,
+    currentRemoteFiles.history,
+    currentRemoteFiles.historyIndex,
+    loadDirectory,
+  ]);
 
   const goForward = useCallback(() => {
     const historyIndex = currentRemoteFiles.historyIndex + 1;
     const path = currentRemoteFiles.history[historyIndex];
-    if (path) {
-      void loadDirectory({ path, mode: "history", historyIndex });
+    if (connectedSessionId && path) {
+      void loadDirectory(connectedSessionId, { path, mode: "history", historyIndex });
     }
-  }, [currentRemoteFiles.history, currentRemoteFiles.historyIndex, loadDirectory]);
+  }, [
+    connectedSessionId,
+    currentRemoteFiles.history,
+    currentRemoteFiles.historyIndex,
+    loadDirectory,
+  ]);
 
   const retry = useCallback(() => {
+    if (!connectedSessionId) {
+      return;
+    }
     void loadDirectory(
-      failedNavigationRef.current ?? {
+      connectedSessionId,
+      failedNavigationsRef.current.get(connectedSessionId) ?? {
         path: currentRemoteFiles.directory?.path,
         mode: "replace",
       },
     );
-  }, [currentRemoteFiles.directory?.path, loadDirectory]);
+  }, [connectedSessionId, currentRemoteFiles.directory?.path, loadDirectory]);
 
   const createDirectory = useCallback(
     async (name: string) => {
@@ -184,7 +181,7 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
 
       const path = await createRemoteDirectory(sessionId, directoryPath, name);
       if (connectedSessionIdRef.current === sessionId) {
-        await loadDirectory({ path: directoryPath, mode: "replace" });
+        await loadDirectory(sessionId, { path: directoryPath, mode: "replace" });
       }
       return path;
     },
@@ -201,7 +198,7 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
 
       const path = await createRemoteFile(sessionId, directoryPath, name);
       if (connectedSessionIdRef.current === sessionId) {
-        await loadDirectory({ path: directoryPath, mode: "replace" });
+        await loadDirectory(sessionId, { path: directoryPath, mode: "replace" });
       }
       return path;
     },
@@ -218,7 +215,7 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
 
       const nextPath = await renameRemoteEntry(sessionId, path, newName);
       if (connectedSessionIdRef.current === sessionId) {
-        await loadDirectory({ path: directoryPath, mode: "replace" });
+        await loadDirectory(sessionId, { path: directoryPath, mode: "replace" });
       }
       return nextPath;
     },
@@ -235,7 +232,7 @@ export function useRemoteFiles(session: SessionSnapshot | null, isEnabled: boole
 
       await deleteRemoteEntry(sessionId, path);
       if (connectedSessionIdRef.current === sessionId) {
-        await loadDirectory({ path: directoryPath, mode: "replace" });
+        await loadDirectory(sessionId, { path: directoryPath, mode: "replace" });
       }
     },
     [connectedSessionId, currentRemoteFiles.directory?.path, loadDirectory],
@@ -269,6 +266,20 @@ const REMOTE_FILES_NOT_READY_ERROR: CommandError = {
   message: "远程文件尚未就绪，请等待目录加载完成后重试。",
   field: null,
 };
+
+function createRemoteFilesState(
+  sessionId: string | null,
+  isLoading: boolean,
+): RemoteFilesState {
+  return {
+    sessionId,
+    directory: null,
+    error: null,
+    isLoading,
+    history: [],
+    historyIndex: -1,
+  };
+}
 
 function applySuccessfulNavigation(
   current: RemoteFilesState,
