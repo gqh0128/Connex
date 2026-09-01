@@ -8,6 +8,7 @@ import {
   Eraser,
   LoaderCircle,
   RefreshCw,
+  Search,
   ShieldQuestion,
   TextSelect,
 } from "lucide-react";
@@ -30,7 +31,10 @@ import {
   readClipboardText,
   writeClipboardText,
 } from "@/lib/clipboard";
-import { getPrimaryShortcutModifierLabel } from "@/lib/platform";
+import {
+  getPrimaryShortcutModifierLabel,
+  hasPrimaryShortcutModifier,
+} from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 import { getSessionPresentation } from "../sessionPresentation";
@@ -48,11 +52,19 @@ import { isTerminalSystemModifierOnlyEvent } from "../terminalKeyEvents";
 import { normalizeTerminalLineHeight } from "../terminalLineHeight";
 import { TerminalSemanticHighlighter } from "../terminalSemanticHighlighter";
 import {
+  EMPTY_TERMINAL_SEARCH_RESULT,
+  formatTerminalSearchResult,
+  TerminalSearchController,
+  type TerminalSearchDirection,
+} from "../terminalSearch";
+import {
   createTerminalTheme,
   getCurrentResolvedTheme,
   getTerminalSemanticPalette,
+  getTerminalSearchDecorations,
 } from "../terminalTheme";
 import type { TerminalThemeProfileId } from "../terminalThemeProfiles";
+import { TerminalSearchBar } from "./TerminalSearchBar";
 
 const INPUT_FLUSH_DELAY_MS = 8;
 const INPUT_FLUSH_SIZE_BYTES = 4 * 1024;
@@ -121,6 +133,9 @@ export function TerminalPane({
   const { resolvedTheme, colorSchemeId } = useTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const searchControllerRef = useRef<TerminalSearchController | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const isSearchOpenRef = useRef(false);
   const semanticHighlighterRef = useRef<TerminalSemanticHighlighter | null>(null);
   const appearanceRef = useRef({
     themeProfileId,
@@ -137,9 +152,36 @@ export function TerminalPane({
   const fontSizeRequestRef = useRef({ version: 0, isPending: false });
   const fitRef = useRef<(() => void) | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchCaseSensitive, setIsSearchCaseSensitive] = useState(false);
+  const [searchResult, setSearchResult] = useState(EMPTY_TERMINAL_SEARCH_RESULT);
   const isVisible = isActive && isWorkspaceVisible;
   const presentation = getSessionPresentation(tab);
   const shortcutModifier = getPrimaryShortcutModifierLabel();
+
+  const openSearch = () => {
+    setIsSearchOpen(true);
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  };
+
+  const closeSearch = () => {
+    setIsSearchOpen(false);
+    searchControllerRef.current?.clear();
+    setSearchResult(EMPTY_TERMINAL_SEARCH_RESULT);
+    window.requestAnimationFrame(() => terminalRef.current?.focus());
+  };
+
+  const navigateSearch = (direction: TerminalSearchDirection) => {
+    searchControllerRef.current?.find(searchQuery, direction);
+  };
+
+  useEffect(() => {
+    isSearchOpenRef.current = isSearchOpen;
+  }, [isSearchOpen]);
 
   useEffect(() => {
     appearanceRef.current.themeProfileId = themeProfileId;
@@ -187,6 +229,7 @@ export function TerminalPane({
       lineHeight: appearanceRef.current.lineHeight,
       scrollback: 10_000,
       smoothScrollDuration: 100,
+      overviewRuler: { width: 6 },
       theme: createTerminalTheme(
         getCurrentResolvedTheme(),
         appearanceRef.current.themeProfileId,
@@ -196,6 +239,15 @@ export function TerminalPane({
     terminal.loadAddon(fitAddon);
     terminal.open(host);
     terminalRef.current = terminal;
+    const searchController = new TerminalSearchController(
+      terminal,
+      getTerminalSearchDecorations(
+        getCurrentResolvedTheme(),
+        appearanceRef.current.themeProfileId,
+      ),
+      setSearchResult,
+    );
+    searchControllerRef.current = searchController;
     const terminalLinks = registerTerminalLinks(terminal, host);
     const semanticHighlighter = new TerminalSemanticHighlighter(
       terminal,
@@ -271,6 +323,30 @@ export function TerminalPane({
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (isTerminalSystemModifierOnlyEvent(event)) {
+        return false;
+      }
+
+      if (hasPrimaryShortcutModifier(event) && event.key.toLocaleLowerCase() === "f") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.type === "keydown" && !event.repeat) {
+          setIsSearchOpen(true);
+          window.requestAnimationFrame(() => {
+            searchInputRef.current?.focus();
+            searchInputRef.current?.select();
+          });
+        }
+        return false;
+      }
+
+      if (event.key === "Escape" && isSearchOpenRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.type === "keydown") {
+          setIsSearchOpen(false);
+          searchController.clear();
+          setSearchResult(EMPTY_TERMINAL_SEARCH_RESULT);
+        }
         return false;
       }
 
@@ -378,6 +454,10 @@ export function TerminalPane({
       if (semanticHighlighterRef.current === semanticHighlighter) {
         semanticHighlighterRef.current = null;
       }
+      searchController.dispose();
+      if (searchControllerRef.current === searchController) {
+        searchControllerRef.current = null;
+      }
       terminal.dispose();
       terminalRef.current = null;
     };
@@ -395,6 +475,28 @@ export function TerminalPane({
     );
     fitRef.current?.();
   }, [colorSchemeId, resolvedTheme, themeProfileId]);
+
+  useEffect(() => {
+    searchControllerRef.current?.setDecorations(
+      getTerminalSearchDecorations(resolvedTheme, themeProfileId),
+    );
+  }, [resolvedTheme, themeProfileId]);
+
+  useEffect(() => {
+    const searchController = searchControllerRef.current;
+    if (!searchController) {
+      return;
+    }
+
+    searchController.setCaseSensitive(isSearchCaseSensitive);
+
+    if (!isSearchOpen || !searchQuery) {
+      searchController.clear();
+      return;
+    }
+
+    searchController.find(searchQuery, "next", true);
+  }, [isSearchCaseSensitive, isSearchOpen, searchQuery]);
 
   useEffect(() => {
     semanticHighlighterRef.current?.setEnabled(isSemanticHighlightingEnabled);
@@ -441,8 +543,12 @@ export function TerminalPane({
     }
 
     fitRef.current?.();
-    terminal.focus();
-  }, [isVisible]);
+    if (isSearchOpen) {
+      searchInputRef.current?.focus();
+    } else {
+      terminal.focus();
+    }
+  }, [isSearchOpen, isVisible]);
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -525,6 +631,11 @@ export function TerminalPane({
           </ContextMenuGroup>
           <ContextMenuSeparator />
           <ContextMenuGroup>
+            <ContextMenuItem onSelect={openSearch}>
+              <Search />
+              查找
+              <ContextMenuShortcut>{shortcutModifier}F</ContextMenuShortcut>
+            </ContextMenuItem>
             <ContextMenuItem onSelect={() => terminalRef.current?.clear()}>
               <Eraser />
               清屏
@@ -532,6 +643,26 @@ export function TerminalPane({
           </ContextMenuGroup>
         </ContextMenuContent>
       </ContextMenu>
+
+      {isSearchOpen ? (
+        <TerminalSearchBar
+          inputRef={searchInputRef}
+          query={searchQuery}
+          resultLabel={formatTerminalSearchResult(searchQuery, searchResult)}
+          isCaseSensitive={isSearchCaseSensitive}
+          canNavigate={searchQuery.length > 0 && searchResult.resultCount > 0}
+          onQueryChange={(query) => {
+            setSearchQuery(query);
+            if (!query) {
+              setSearchResult(EMPTY_TERMINAL_SEARCH_RESULT);
+            }
+          }}
+          onCaseSensitiveChange={setIsSearchCaseSensitive}
+          onNavigate={navigateSearch}
+          onInputBlur={() => searchControllerRef.current?.clearActiveDecoration()}
+          onClose={closeSearch}
+        />
+      ) : null}
 
       {tab.snapshot?.state === "connected" ? null : (
         <SessionStateNotice

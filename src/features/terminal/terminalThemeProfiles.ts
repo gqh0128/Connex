@@ -13,10 +13,18 @@ export type TerminalSemanticPalette = Readonly<
   Record<TerminalSemanticTokenKind, string>
 >;
 
+export type TerminalSearchPalette = Readonly<{
+  matchBackground: string;
+  matchBorder: string;
+  activeMatchBackground: string;
+  activeMatchBorder: string;
+}>;
+
 type TerminalThemeVariant = {
   foreground: string;
   ansi: Readonly<ITheme>;
   semantic: TerminalSemanticPalette;
+  search: TerminalSearchPalette;
 };
 
 export type TerminalThemeProfile = {
@@ -56,6 +64,12 @@ const CONNEX_NEUTRAL_PROFILE = {
         environment: "#7A3E9D",
         host: "#1D7A4D",
       },
+      search: {
+        matchBackground: "#FFE7A3",
+        matchBorder: "#C78300",
+        activeMatchBackground: "#FFB020",
+        activeMatchBorder: "#7A4B00",
+      },
     },
     dark: {
       foreground: "#E8E9ED",
@@ -83,6 +97,12 @@ const CONNEX_NEUTRAL_PROFILE = {
         path: "#75D1DA",
         environment: "#D79AE8",
         host: "#63E6AE",
+      },
+      search: {
+        matchBackground: "#5A4A00",
+        matchBorder: "#D6B83F",
+        activeMatchBackground: "#B86B00",
+        activeMatchBorder: "#FFB84D",
       },
     },
   },

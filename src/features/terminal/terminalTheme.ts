@@ -5,8 +5,10 @@ import {
   DEFAULT_TERMINAL_THEME_PROFILE_ID,
   getTerminalThemeProfile,
   type TerminalSemanticPalette,
+  type TerminalSearchPalette,
   type TerminalThemeProfileId,
 } from "./terminalThemeProfiles";
+import type { TerminalSearchDecorations } from "./terminalSearch";
 
 const FALLBACKS = {
   light: {
@@ -53,6 +55,20 @@ export function getTerminalSemanticPalette(
   profileId: TerminalThemeProfileId = DEFAULT_TERMINAL_THEME_PROFILE_ID,
 ): TerminalSemanticPalette {
   return getTerminalThemeProfile(profileId).variants[resolvedTheme].semantic;
+}
+
+export function getTerminalSearchDecorations(
+  resolvedTheme: ResolvedTheme,
+  profileId: TerminalThemeProfileId = DEFAULT_TERMINAL_THEME_PROFILE_ID,
+): TerminalSearchDecorations {
+  const palette: TerminalSearchPalette =
+    getTerminalThemeProfile(profileId).variants[resolvedTheme].search;
+
+  return {
+    ...palette,
+    matchOverviewRuler: palette.matchBorder,
+    activeMatchColorOverviewRuler: palette.activeMatchBorder,
+  };
 }
 
 export function getCurrentResolvedTheme(): ResolvedTheme {
