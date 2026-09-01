@@ -3,12 +3,17 @@ import { invoke } from "@tauri-apps/api/core";
 import type { CustomTerminalFont } from "@/types/terminalFonts";
 
 const LIST_TERMINAL_FONTS_COMMAND = "list_terminal_fonts";
+const LIST_SYSTEM_TERMINAL_FONTS_COMMAND = "list_system_terminal_fonts";
 const IMPORT_TERMINAL_FONT_COMMAND = "import_terminal_font";
 const READ_TERMINAL_FONT_COMMAND = "read_terminal_font";
 const DELETE_TERMINAL_FONT_COMMAND = "delete_terminal_font";
 
 export function listTerminalFonts() {
   return invoke<CustomTerminalFont[]>(LIST_TERMINAL_FONTS_COMMAND);
+}
+
+export function listSystemTerminalFonts() {
+  return invoke<string[]>(LIST_SYSTEM_TERMINAL_FONTS_COMMAND);
 }
 
 export function importTerminalFont(path: string) {

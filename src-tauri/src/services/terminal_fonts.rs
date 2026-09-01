@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::domain::terminal_fonts::{TerminalFontFile, TerminalFontFormat};
+use crate::infrastructure::system_fonts::list_system_monospace_fonts;
 use crate::infrastructure::terminal_fonts::{TerminalFontRepository, TerminalFontRepositoryError};
 
 const MAX_FONT_BYTES: usize = 10 * 1024 * 1024;
@@ -24,6 +25,13 @@ impl TerminalFontService {
 
     pub async fn list(&self) -> Result<Vec<TerminalFontFile>, TerminalFontServiceError> {
         self.repository.list().await.map_err(Into::into)
+    }
+
+    pub async fn list_system_fonts(&self) -> Result<Vec<String>, TerminalFontServiceError> {
+        tokio::task::spawn_blocking(list_system_monospace_fonts)
+            .await
+            .map_err(|_| TerminalFontServiceError::SystemFonts)?
+            .map_err(|_| TerminalFontServiceError::SystemFonts)
     }
 
     pub async fn import(
@@ -182,6 +190,7 @@ pub enum TerminalFontServiceError {
     TooLarge,
     File,
     Storage,
+    SystemFonts,
 }
 
 impl From<TerminalFontRepositoryError> for TerminalFontServiceError {

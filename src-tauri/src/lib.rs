@@ -69,6 +69,7 @@ pub fn run() {
             commands::app::get_app_preferences,
             commands::app::update_app_preferences,
             commands::terminal_fonts::list_terminal_fonts,
+            commands::terminal_fonts::list_system_terminal_fonts,
             commands::terminal_fonts::import_terminal_font,
             commands::terminal_fonts::read_terminal_font,
             commands::terminal_fonts::delete_terminal_font,

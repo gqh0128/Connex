@@ -57,6 +57,11 @@ impl From<TerminalFontServiceError> for CommandError {
                 message: "终端字体暂时无法保存，请稍后重试。",
                 field: None,
             },
+            TerminalFontServiceError::SystemFonts => Self {
+                code: "system_terminal_fonts_unavailable",
+                message: "无法读取本机等宽字体，请稍后重试。",
+                field: None,
+            },
         }
     }
 }

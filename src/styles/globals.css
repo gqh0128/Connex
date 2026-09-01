@@ -2,6 +2,14 @@
 @import "tw-animate-css";
 
 @font-face {
+  font-family: "Connex Fira Code";
+  src: url("../assets/fonts/fira-code/FiraCode-VF.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: block;
+}
+
+@font-face {
   font-family: "Connex JetBrains Mono";
   src: url("../assets/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf")
     format("truetype-variations");
@@ -16,6 +24,42 @@
     format("truetype-variations");
   font-style: italic;
   font-weight: 100 800;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Connex Cascadia Code";
+  src: url("../assets/fonts/cascadia-code/CascadiaCode.woff2")
+    format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Connex Cascadia Code";
+  src: url("../assets/fonts/cascadia-code/CascadiaCodeItalic.woff2")
+    format("woff2-variations");
+  font-style: italic;
+  font-weight: 200 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Connex Source Code Pro";
+  src: url("../assets/fonts/source-code-pro/SourceCodeVF-Upright.woff2")
+    format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Connex Source Code Pro";
+  src: url("../assets/fonts/source-code-pro/SourceCodeVF-Italic.woff2")
+    format("woff2-variations");
+  font-style: italic;
+  font-weight: 200 900;
   font-display: block;
 }
 

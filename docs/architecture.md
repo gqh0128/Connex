@@ -52,7 +52,7 @@ SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只�
 
 终端外观拆为三个独立层次：`terminalThemeProfiles` 保存稳定 profile ID、终端前景色、ANSI palette 和语义 palette；`terminalSemanticRules` 只负责把普通 buffer 文本识别为 URL、命令选项、路径、环境变量、主机/IP 或 Shell 提示符片段；`TerminalSemanticHighlighter` 把匹配结果适配为 xterm cell decoration。React 组合层只传递 profile ID 和是否启用语义高亮，切换设置或 palette 只刷新现有 xterm 实例，不能重建会话。新增主题只注册新的 profile，不复制识别规则或终端生命周期代码。
 
-终端字体使用独立于主题的 profile 注册表。`terminalFontProfiles` 只描述内置预设的稳定 ID、展示信息和 xterm `fontFamily`；`terminalFontLoader` 负责等待内置 Web Font 或把自定义字体 raw bytes 注册为浏览器 `FontFace`；`useTerminalFonts` 负责编排列表、加载状态和导入/删除操作。字重范围、默认值、步长以及粗体派生规则集中在 `terminalFontWeight`，字号范围、默认值、步长和快捷键识别集中在 `terminalFontSize`，行距范围、默认值、步长与格式化集中在 `terminalLineHeight`，平台主修饰键识别集中在 `lib/platform`。React 只把解析后的字体族、持久化字重、字号和行距传给 xterm，切换这些设置必须刷新现有实例并重新 fit，不得修改应用 UI 字体或重建 SSH 会话。增加新的内置字体只注册 profile 并提供本地字体资源，不复制设置页或 xterm 生命周期代码。
+终端字体使用独立于主题的 profile 注册表。`terminalFontProfiles` 先以稳定 ID 注册七个常用预设；Fira Code、JetBrains Mono、Cascadia Code 和 Source Code Pro 使用仓库内 OFL 字体资源，SF Mono / Menlo、Consolas 和 System Monospace 只使用平台字体栈，JetBrains Mono 是默认值。Rust Infrastructure 通过 `font-kit` 枚举并筛选本机等宽字体，阻塞扫描由 `TerminalFontService` 放入 `spawn_blocking`，前端只接收排序后的字体族名称；`useTerminalFonts` 在选择器首次打开或需要恢复本机字体设置时懒加载并缓存该列表。依赖特定系统字体的预设通过枚举结果判断可用性：未安装时保留展示但禁止选择；已保存的预设在当前设备不可用时继续通过字体栈安全回退，并向用户显示回退说明。用户导入文件名与预设名称完全一致的字体文件后，对应系统预设重新可选并标记“第三方资源”，但导入后仍选中独立的自定义字体项；加载器只在用户随后选择该预设时通过导入文件的自定义 `FontFace` 实现。删除作为当前预设来源的导入文件前先切回默认字体。`terminalFontLoader` 负责等待内置 Web Font、解析本机字体栈，或把自定义字体 raw bytes 注册为浏览器 `FontFace`。字重范围、默认值、步长以及粗体派生规则集中在 `terminalFontWeight`，字号范围、默认值、步长和快捷键识别集中在 `terminalFontSize`，行距范围、默认值、步长与格式化集中在 `terminalLineHeight`，平台主修饰键识别集中在 `lib/platform`。React 只把解析后的字体族、持久化字重、字号和行距传给 xterm，切换这些设置必须刷新现有实例并重新 fit，不得修改应用 UI 字体或重建 SSH 会话。增加新的内置字体只注册 profile 并提供本地字体资源，不复制设置页或 xterm 生命周期代码。
 
 设置页的 `TerminalAppearancePreview` 使用独立、只读的 xterm.js 实例渲染固定终端样例，并复用正式终端的 theme profile、字体族、字重、字号和行距参数。预览不连接 SSH、不注册链接或语义扫描器，样例颜色直接从当前 profile 的语义 palette 生成 ANSI 序列；调整外观设置时只更新预览实例，不把预览状态写回会话。
 
@@ -81,7 +81,7 @@ IPC 分为控制面和数据面。
 - resize、keepalive 和终端输入
 - SFTP 目录与文件操作
 - 开始、取消、重试传输
-- 导入、列出、读取和删除终端字体
+- 枚举本机等宽字体，以及导入、列出、读取和删除用户字体
 
 数据面使用有序 Tauri Channel，适合：
 
@@ -197,7 +197,7 @@ known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主�
 
 应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、全局 `color_scheme_id`、`terminal_semantic_highlighting_enabled`、稳定的 `terminal_font_id`、终端字重、字号、行距和字号快捷键开关。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改、终端快捷键修改和退出确认中的“记住我的选择”都必须写入 SQLite；读取失败时采用安全默认值，仍然显示退出确认、使用松柏绿、启用语义高亮、使用内置 JetBrains Mono、500 字重、13 px 字号、1.10 行距并开启字号快捷键。全局配色同时镜像到 localStorage 作为首帧关键值，SQLite 仍是最终来源。字号在前后端统一限制为 9–32 px。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
 
-用户选择的字体由 `TerminalFontService` 校验扩展名、文件签名和 10 MiB 大小限制，再以 UUID 文件名复制到应用数据目录的 `terminal-fonts` 子目录；SQLite 的 `terminal_font_files` 只保存稳定 ID、展示名称、格式、大小和内部文件名，不保留用户原始路径。Commands 保持薄，文件校验与复制在 service 中完成，元数据读写位于 repository。删除字体必须确认且只删除 Connex 的副本；当前选中的自定义字体删除前先切回默认 profile。
+用户选择的本机字体以字体族名称组成稳定设置 ID；如果重启后该字体不再存在，则安全回退到默认 JetBrains Mono。用户导入的字体由 `TerminalFontService` 校验扩展名、文件签名和 10 MiB 大小限制，再以 UUID 文件名复制到应用数据目录的 `terminal-fonts` 子目录；SQLite 的 `terminal_font_files` 只保存稳定 ID、展示名称、格式、大小和内部文件名，不保留用户原始路径。Commands 保持薄，文件校验与复制在 service 中完成，元数据读写位于 repository。删除字体必须确认且只删除 Connex 的副本；当前选中的自定义字体删除前先切回默认 profile。
 
 主窗口通过 Tauri `onCloseRequested` 拦截系统关闭请求并立即 `preventDefault()`。需要确认时打开前端 `AlertDialog`；用户取消只关闭弹窗，不写入偏好。用户确认退出后调用 `destroy()`，绕过新的 `closeRequested` 事件并进入现有窗口销毁清理流程；偏好关闭时也必须先拦截请求再执行 `destroy()`，避免平台行为分叉。
 
@@ -209,7 +209,7 @@ known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主�
 2. 首次主机指纹确认与指纹变化拒绝。
 3. Bash/Zsh、Vim、tmux、top、中文输入、复制粘贴、resize、运行中切换字体/字号，以及语义高亮在 alternate buffer 中完全停用。
 4. 持续大输出、滚动回看和长 URL 下的高亮 decoration 数量、内存、延迟与背压。
-5. 内置字体、系统等宽字体、导入字体和字号在重启后正确恢复；无效格式、超大文件、越界字号和已删除字体安全回退；macOS 的 `Command +/-` 与 Windows/Linux 的 `Ctrl +/-` 只在开关启用且终端获得焦点时调整字号，不发送给远端。
+5. 七个常用预设、本机等宽字体、导入字体和字号在重启后正确恢复；无效格式、超大文件、越界字号、已删除字体和已卸载的本机字体安全回退；macOS 的 `Command +/-` 与 Windows/Linux 的 `Ctrl +/-` 只在开关启用且终端获得焦点时调整字号，不发送给远端。
 6. 同一连接同时运行终端和 SFTP 上传下载。
 7. 主动关闭、网络断开、超时和应用退出后的资源清理。
 

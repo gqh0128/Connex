@@ -19,6 +19,13 @@ pub async fn list_terminal_fonts(
 }
 
 #[tauri::command]
+pub async fn list_system_terminal_fonts(
+    service: State<'_, TerminalFontService>,
+) -> Result<Vec<String>, CommandError> {
+    service.list_system_fonts().await.map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn import_terminal_font(
     input: ImportTerminalFontInput,
     service: State<'_, TerminalFontService>,

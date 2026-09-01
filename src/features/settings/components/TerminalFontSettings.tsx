@@ -1,4 +1,12 @@
-import { Check, ChevronDown, LoaderCircle, Trash2, Type, Upload } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  LoaderCircle,
+  Search,
+  Trash2,
+  Type,
+  Upload,
+} from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -20,6 +28,7 @@ import {
   FieldError,
   FieldTitle,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -56,6 +65,7 @@ export function TerminalFontSettings({
   terminalFonts,
 }: TerminalFontSettingsProps) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [fontQuery, setFontQuery] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -63,23 +73,33 @@ export function TerminalFontSettings({
   const [fontToDelete, setFontToDelete] = useState<TerminalFontOption | null>(null);
   const displayedError = error ?? terminalFonts.error ?? appPreferencesError;
   const isDisabled = isAppPreferencesLoading || isSaving || isImporting || isDeleting;
-  const presetOptions = terminalFonts.options.filter(
-    (option) => option.kind === "preset",
+  const normalizedQuery = fontQuery.trim().toLocaleLowerCase();
+  const visibleOptions = terminalFonts.options.filter((option) =>
+    option.label.toLocaleLowerCase().includes(normalizedQuery),
   );
-  const customOptions = terminalFonts.options.filter(
-    (option) => option.kind === "custom",
-  );
+  const presetOptions = visibleOptions.filter((option) => option.kind === "preset");
+  const systemOptions = visibleOptions.filter((option) => option.kind === "system");
+  const customOptions = visibleOptions.filter((option) => option.kind === "custom");
+
+  const setPickerOpen = (open: boolean) => {
+    setIsPickerOpen(open);
+    if (open) {
+      void terminalFonts.loadSystemFonts();
+    } else {
+      setFontQuery("");
+    }
+  };
 
   const selectFont = async (selectionId: string) => {
     if (selectionId === appPreferences.terminalFontId) {
-      setIsPickerOpen(false);
+      setPickerOpen(false);
       return;
     }
     setIsSaving(true);
     setError(null);
     try {
       await onAppPreferencesChange({ terminalFontId: selectionId });
-      setIsPickerOpen(false);
+      setPickerOpen(false);
     } catch {
       setError("无法保存终端字体设置，请稍后重试。");
     } finally {
@@ -99,7 +119,7 @@ export function TerminalFontSettings({
       await onAppPreferencesChange({
         terminalFontId: customTerminalFontSelectionId(font.id),
       });
-      setIsPickerOpen(false);
+      setPickerOpen(false);
     } catch (nextError: unknown) {
       setError(getCommandError(nextError).message);
     } finally {
@@ -114,7 +134,10 @@ export function TerminalFontSettings({
     setIsDeleting(true);
     setError(null);
     try {
-      if (fontToDelete.id === appPreferences.terminalFontId) {
+      if (
+        fontToDelete.id === appPreferences.terminalFontId ||
+        terminalFonts.selectedOption.resourceCustomFontId === fontToDelete.customFontId
+      ) {
         await onAppPreferencesChange({ terminalFontId: DEFAULT_TERMINAL_FONT_ID });
       }
       await terminalFonts.deleteFont(fontToDelete.customFontId);
@@ -137,14 +160,19 @@ export function TerminalFontSettings({
         <FieldContent>
           <FieldTitle>终端字体</FieldTitle>
           <FieldDescription>
-            仅应用于 xterm.js 终端。支持内置预设以及不超过 10 MB 的 TTF、OTF、WOFF 和
-            WOFF2 文件。
+            仅应用于 xterm.js 终端。可选择七个常用预设、本机等宽字体，或导入不超过 10 MB
+            的 TTF、OTF、WOFF 和 WOFF2 文件。
           </FieldDescription>
+          {terminalFonts.fallbackNotice ? (
+            <FieldDescription className="text-warning">
+              {terminalFonts.fallbackNotice}
+            </FieldDescription>
+          ) : null}
           <FieldError>{displayedError}</FieldError>
         </FieldContent>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+          <Popover open={isPickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger asChild>
               <Button
                 type="button"
@@ -165,19 +193,47 @@ export function TerminalFontSettings({
                 <PopoverTitle>选择终端字体</PopoverTitle>
                 <PopoverDescription>切换后立即应用到所有终端会话。</PopoverDescription>
               </PopoverHeader>
+              <div className="relative px-1 py-1">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  density="compact"
+                  value={fontQuery}
+                  onChange={(event) => setFontQuery(event.target.value)}
+                  className="pl-8"
+                  placeholder="搜索字体"
+                  aria-label="搜索终端字体"
+                />
+              </div>
               <div
                 className="flex max-h-80 flex-col gap-1 overflow-y-auto py-1"
                 role="radiogroup"
                 aria-label="终端字体"
               >
-                <FontOptionGroup
-                  label="内置预设"
-                  options={presetOptions}
-                  selectedId={appPreferences.terminalFontId}
-                  disabled={isDisabled}
-                  onSelect={(id) => void selectFont(id)}
-                  onDelete={setFontToDelete}
-                />
+                {presetOptions.length > 0 ? (
+                  <FontOptionGroup
+                    label="常用预设"
+                    options={presetOptions}
+                    selectedId={appPreferences.terminalFontId}
+                    disabled={isDisabled}
+                    onSelect={(id) => void selectFont(id)}
+                    onDelete={setFontToDelete}
+                  />
+                ) : null}
+                {systemOptions.length > 0 ? (
+                  <FontOptionGroup
+                    label="本机等宽字体"
+                    options={systemOptions}
+                    selectedId={appPreferences.terminalFontId}
+                    disabled={isDisabled}
+                    onSelect={(id) => void selectFont(id)}
+                    onDelete={setFontToDelete}
+                  />
+                ) : terminalFonts.isSystemFontsLoading ? (
+                  <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                    正在读取本机等宽字体…
+                  </div>
+                ) : null}
                 {customOptions.length > 0 ? (
                   <FontOptionGroup
                     label="已导入"
@@ -187,6 +243,11 @@ export function TerminalFontSettings({
                     onSelect={(id) => void selectFont(id)}
                     onDelete={setFontToDelete}
                   />
+                ) : null}
+                {visibleOptions.length === 0 && !terminalFonts.isSystemFontsLoading ? (
+                  <div className="px-2 py-4 text-center text-xs text-muted-foreground">
+                    没有匹配的字体
+                  </div>
                 ) : null}
               </div>
             </PopoverContent>
@@ -279,12 +340,27 @@ function FontOptionGroup({
               aria-checked={isSelected}
               variant={isSelected ? "secondary" : "ghost"}
               className="h-auto min-w-0 flex-1 justify-start px-2 py-2 text-left"
-              disabled={disabled}
+              disabled={disabled || option.availability !== "available"}
               onClick={() => onSelect(option.id)}
             >
               {isSelected ? <Check data-icon="inline-start" /> : null}
               <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-                <span className="w-full truncate">{option.label}</span>
+                <span className="flex w-full min-w-0 items-center gap-2">
+                  <span className="truncate">{option.label}</span>
+                  {option.availability === "unavailable" ? (
+                    <Badge variant="secondary" className="shrink-0">
+                      未安装
+                    </Badge>
+                  ) : option.availability === "unknown" ? (
+                    <Badge variant="secondary" className="shrink-0">
+                      检测中
+                    </Badge>
+                  ) : option.isThirdPartyResource ? (
+                    <Badge variant="secondary" className="shrink-0">
+                      第三方资源
+                    </Badge>
+                  ) : null}
+                </span>
                 <span className="w-full truncate text-xs font-normal text-muted-foreground">
                   {option.description}
                 </span>

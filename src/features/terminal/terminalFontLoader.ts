@@ -5,7 +5,10 @@ import {
   DEFAULT_TERMINAL_FONT_ID,
   SYSTEM_MONOSPACE_FONT_FAMILY,
   customTerminalFontId,
+  findImportedTerminalFontForProfile,
   getTerminalFontProfile,
+  systemTerminalFontFamily,
+  systemTerminalFontName,
 } from "./terminalFontProfiles";
 
 const bundledLoads = new Map<string, Promise<void>>();
@@ -14,13 +17,31 @@ const customFaces = new Map<string, Promise<FontFace>>();
 export async function loadTerminalFont(
   selectionId: string,
   customFonts: readonly CustomTerminalFont[],
+  systemFontNames: readonly string[],
 ) {
   const profile = getTerminalFontProfile(selectionId);
   if (profile) {
     if (profile.kind === "bundled") {
       await loadBundledProfile(profile.id, profile.preloadFamilies);
+    } else if (
+      profile.availabilityFamilies &&
+      !profile.availabilityFamilies.some((familyName) =>
+        systemFontNames.includes(familyName),
+      )
+    ) {
+      const importedFont = findImportedTerminalFontForProfile(profile, customFonts);
+      if (importedFont) {
+        return loadCustomTerminalFont(importedFont);
+      }
     }
     return profile.fontFamily;
+  }
+
+  const systemFontName = systemTerminalFontName(selectionId);
+  if (systemFontName) {
+    return systemFontNames.includes(systemFontName)
+      ? systemTerminalFontFamily(systemFontName)
+      : loadDefaultTerminalFont();
   }
 
   const id = customTerminalFontId(selectionId);
@@ -29,6 +50,10 @@ export async function loadTerminalFont(
     return loadDefaultTerminalFont();
   }
 
+  return loadCustomTerminalFont(customFont);
+}
+
+async function loadCustomTerminalFont(customFont: CustomTerminalFont) {
   const familyName = customFontFamilyName(customFont.id);
   let load = customFaces.get(customFont.id);
   if (!load) {
