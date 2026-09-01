@@ -729,6 +729,7 @@ dependencies = [
  "ring",
  "russh",
  "russh-sftp",
+ "same-file",
  "serde",
  "serde_json",
  "tauri",

@@ -5,6 +5,9 @@ mod managers;
 mod models;
 mod services;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{Manager, WindowEvent};
 
 use infrastructure::app_settings::AppSettingsRepository;
@@ -21,7 +24,7 @@ use services::terminal_fonts::TerminalFontService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -56,7 +59,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, WindowEvent::Destroyed) {
                 let session_manager = window.state::<SshSessionManager>().inner().clone();
-                tauri::async_runtime::spawn(async move {
+                tauri::async_runtime::block_on(async move {
                     session_manager.close_all().await;
                 });
             }
@@ -89,9 +92,37 @@ pub fn run() {
             commands::sftp::create_remote_file,
             commands::sftp::rename_remote_entry,
             commands::sftp::delete_remote_entry,
+            commands::sftp::select_local_upload_files,
+            commands::sftp::select_local_download_target,
+            commands::sftp::attach_remote_file_transfers,
             commands::sftp::upload_remote_file,
-            commands::sftp::cancel_remote_file_upload,
+            commands::sftp::download_remote_file,
+            commands::sftp::cancel_remote_file_transfer,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    let is_exit_cleanup_started = Arc::new(AtomicBool::new(false));
+    let is_exit_cleanup_complete = Arc::new(AtomicBool::new(false));
+    app.run(move |app_handle, event| {
+        let tauri::RunEvent::ExitRequested { code, api, .. } = event else {
+            return;
+        };
+        if is_exit_cleanup_complete.load(Ordering::Acquire) {
+            return;
+        }
+        api.prevent_exit();
+        if is_exit_cleanup_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        let app_handle = app_handle.clone();
+        let session_manager = app_handle.state::<SshSessionManager>().inner().clone();
+        let is_exit_cleanup_complete = is_exit_cleanup_complete.clone();
+        tauri::async_runtime::spawn(async move {
+            session_manager.close_all().await;
+            is_exit_cleanup_complete.store(true, Ordering::Release);
+            app_handle.exit(code.unwrap_or(0));
+        });
+    });
 }

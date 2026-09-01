@@ -15,12 +15,41 @@ export type RemoteDirectory = {
 
 export type UploadRemoteFileInput = {
   transferId: string;
+};
+
+export type SelectLocalUploadFilesInput = {
   sessionId: string;
-  localPath: string;
   remoteDirectory: string;
 };
 
-export type RemoteUploadProgress = {
+export type LocalUploadFileSelection = {
+  transferId: string;
+  fileName: string;
+  totalBytes: number;
+};
+
+export type DownloadRemoteFileInput = {
+  transferId: string;
+};
+
+export type SelectLocalDownloadTargetInput = {
+  sessionId: string;
+  remotePath: string;
+  defaultFileName: string;
+};
+
+export type LocalDownloadTargetSelection = {
+  transferId: string;
+  totalBytes: number;
+};
+
+export type AttachRemoteFileTransfersInput = {
+  transferIds: string[];
+};
+
+export type RemoteFileTransferCancelStatus = "accepted" | "tooLate" | "notFound";
+
+export type RemoteFileTransferProgress = {
   transferId: string;
   transferredBytes: number;
   totalBytes: number;
@@ -29,5 +58,10 @@ export type RemoteUploadProgress = {
 
 export type RemoteUploadResult = {
   remotePath: string;
+  totalBytes: number;
+};
+
+export type RemoteDownloadResult = {
+  localPath: string;
   totalBytes: number;
 };

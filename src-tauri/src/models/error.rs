@@ -129,7 +129,42 @@ impl From<SessionManagerError> for CommandError {
             SessionManagerError::InvalidLocalFile => Self {
                 code: "local_file_unavailable",
                 message: "无法读取这个本地文件，请检查文件是否仍然存在以及访问权限。",
-                field: Some("localPath"),
+                field: None,
+            },
+            SessionManagerError::InvalidLocalDownloadTarget => Self {
+                code: "local_download_target_unavailable",
+                message: "无法使用这个保存位置，请检查目录是否仍然存在以及写入权限。",
+                field: None,
+            },
+            SessionManagerError::LocalFileSelectionUnavailable => Self {
+                code: "local_file_selection_unavailable",
+                message: "系统文件选择器暂时不可用，请稍后重试。",
+                field: None,
+            },
+            SessionManagerError::LocalFileCapabilityUnavailable => Self {
+                code: "local_file_authorization_unavailable",
+                message: "本地文件授权已失效或已被使用，请重新选择文件。",
+                field: Some("transferId"),
+            },
+            SessionManagerError::LocalFileCapabilityChanged => Self {
+                code: "local_file_authorization_changed",
+                message: "本地文件或保存位置在授权后发生了变化，请重新选择。",
+                field: Some("transferId"),
+            },
+            SessionManagerError::LocalUploadFileChanged => Self {
+                code: "local_upload_file_changed",
+                message: "本地文件在上传期间发生了变化，请重新选择后重试。",
+                field: Some("transferId"),
+            },
+            SessionManagerError::TransferDestinationBusy => Self {
+                code: "transfer_destination_busy",
+                message: "已有传输任务占用了同一目标位置，请等待完成或先取消该任务。",
+                field: None,
+            },
+            SessionManagerError::TransferConcurrencyLimit => Self {
+                code: "transfer_concurrency_limit",
+                message: "当前已有 3 个传输任务正在运行，请稍后重试。",
+                field: None,
             },
             SessionManagerError::RemoteFilesUnavailable => Self {
                 code: "sftp_unavailable",
@@ -149,7 +184,7 @@ impl From<SessionManagerError> for CommandError {
             SessionManagerError::RemoteFileExists => Self {
                 code: "remote_file_exists",
                 message: "远程目录中已经存在同名文件，Connex 没有覆盖它。",
-                field: Some("remoteDirectory"),
+                field: Some("transferId"),
             },
             SessionManagerError::RemoteCreateFailed => Self {
                 code: "remote_create_failed",
@@ -168,12 +203,42 @@ impl From<SessionManagerError> for CommandError {
             },
             SessionManagerError::TransferCancelled => Self {
                 code: "transfer_cancelled",
-                message: "文件上传已取消。",
+                message: "文件传输已取消。",
                 field: None,
             },
             SessionManagerError::RemoteUploadFailed => Self {
                 code: "remote_upload_failed",
                 message: "文件上传失败，请检查远程目录权限和连接状态。",
+                field: None,
+            },
+            SessionManagerError::RemoteDownloadUnavailable => Self {
+                code: "remote_download_unavailable",
+                message: "无法读取这个远程文件，请检查文件是否仍然存在以及访问权限。",
+                field: Some("transferId"),
+            },
+            SessionManagerError::RemoteDownloadFileChanged => Self {
+                code: "remote_download_file_changed",
+                message: "远程文件在下载期间发生了变化，请重新下载。",
+                field: Some("transferId"),
+            },
+            SessionManagerError::RemoteDownloadFailed => Self {
+                code: "remote_download_failed",
+                message: "文件下载失败，请检查远程文件权限和连接状态。",
+                field: None,
+            },
+            SessionManagerError::LocalDownloadWriteFailed => Self {
+                code: "local_download_write_failed",
+                message: "无法写入下载数据，请检查保存目录权限和本地可用空间。",
+                field: Some("transferId"),
+            },
+            SessionManagerError::LocalDownloadCommitFailed => Self {
+                code: "local_download_commit_failed",
+                message: "下载已完成，但无法写入所选位置；原文件未被主动删除。",
+                field: Some("transferId"),
+            },
+            SessionManagerError::FileSizeExceedsSafeInteger => Self {
+                code: "file_size_exceeds_safe_integer",
+                message: "文件过大，超过了当前界面能够安全表示的大小范围。",
                 field: None,
             },
         }

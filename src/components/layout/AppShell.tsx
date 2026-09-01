@@ -36,6 +36,7 @@ import {
   type WorkspacePageId,
   type WorkspacePageTab,
 } from "@/types/navigation";
+import type { RemoteFileEntry } from "@/types/sftp";
 
 import { AppTitleBar } from "./AppTitleBar";
 import { SessionTabs } from "./SessionTabs";
@@ -79,7 +80,7 @@ export function AppShell({
   const sidebarPanelRef = usePanelRef();
   const filePanelRef = usePanelRef();
   const connectionSidebarRef = useRef<ConnectionSidebarHandle>(null);
-  const { activeTabId, closeSession } = sshSessions;
+  const { activeTabId } = sshSessions;
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const activeSession = sshSessions.activeTab?.snapshot ?? null;
   const isRemoteFilesEnabled = activeView === "workspace" && isFilePanelOpen;
@@ -153,6 +154,75 @@ export function AppShell({
       },
     });
   }, [activeSession, fileTransfers, remoteFiles.directory?.path]);
+
+  const downloadFile = useCallback(
+    (entry: RemoteFileEntry) => {
+      const session = activeSession;
+      if (!session || session.state !== "connected" || entry.kind !== "file") {
+        return;
+      }
+
+      void fileTransfers.selectAndDownload({
+        sessionId: session.id,
+        connectionName: session.connectionName,
+        entry,
+      });
+    },
+    [activeSession, fileTransfers],
+  );
+
+  const cancelTransfersForTabs = useCallback(
+    (localIds: string[]) => {
+      const closingIds = new Set(localIds);
+      for (const tab of sshSessions.tabs) {
+        if (closingIds.has(tab.localId) && tab.snapshot) {
+          fileTransfers.cancelTransfersForSession(tab.snapshot.id);
+        }
+      }
+    },
+    [fileTransfers, sshSessions.tabs],
+  );
+
+  const closeSession = useCallback(
+    (localId: string) => {
+      cancelTransfersForTabs([localId]);
+      sshSessions.closeSession(localId);
+    },
+    [cancelTransfersForTabs, sshSessions],
+  );
+
+  const closeOtherSessions = useCallback(
+    (localId: string) => {
+      cancelTransfersForTabs(
+        sshSessions.tabs
+          .filter((tab) => tab.localId !== localId)
+          .map((tab) => tab.localId),
+      );
+      sshSessions.closeOtherSessions(localId);
+    },
+    [cancelTransfersForTabs, sshSessions],
+  );
+
+  const closeSessionsToRight = useCallback(
+    (localId: string) => {
+      const tabIndex = sshSessions.tabs.findIndex((tab) => tab.localId === localId);
+      if (tabIndex >= 0) {
+        cancelTransfersForTabs(
+          sshSessions.tabs.slice(tabIndex + 1).map((tab) => tab.localId),
+        );
+      }
+      sshSessions.closeSessionsToRight(localId);
+    },
+    [cancelTransfersForTabs, sshSessions],
+  );
+
+  const reconnectSession = useCallback(
+    (localId: string) => {
+      cancelTransfersForTabs([localId]);
+      sshSessions.reconnectSession(localId);
+    },
+    [cancelTransfersForTabs, sshSessions],
+  );
 
   useLayoutEffect(() => {
     const filePanel = filePanelRef.current;
@@ -252,10 +322,10 @@ export function AppShell({
                 sshSessions.selectSession(localId);
                 onViewChange("workspace");
               }}
-              onClose={sshSessions.closeSession}
-              onReconnect={sshSessions.reconnectSession}
-              onCloseOther={sshSessions.closeOtherSessions}
-              onCloseRight={sshSessions.closeSessionsToRight}
+              onClose={closeSession}
+              onReconnect={reconnectSession}
+              onCloseOther={closeOtherSessions}
+              onCloseRight={closeSessionsToRight}
               onPageSelect={onViewChange}
               onPageClose={onPageClose}
               onSidebarToggle={handleSidebarToggle}
@@ -305,7 +375,7 @@ export function AppShell({
                         onRegisterOutput={sshSessions.registerOutputHandler}
                         onInput={sshSessions.writeInput}
                         onResize={sshSessions.resizeSession}
-                        onClose={sshSessions.closeSession}
+                        onClose={closeSession}
                       />
                     </ResizablePanel>
                     <ResizableHandle
@@ -330,7 +400,9 @@ export function AppShell({
                           session={activeSession}
                           browser={remoteFiles}
                           isSelectingUpload={fileTransfers.isSelectingFiles}
+                          isSelectingDownload={fileTransfers.isSelectingDownload}
                           onUpload={uploadFiles}
+                          onDownload={downloadFile}
                         />
                       </div>
                     </ResizablePanel>
@@ -382,7 +454,9 @@ export function AppShell({
             session={activeSession}
             browser={remoteFiles}
             isSelectingUpload={fileTransfers.isSelectingFiles}
+            isSelectingDownload={fileTransfers.isSelectingDownload}
             onUpload={uploadFiles}
+            onDownload={downloadFile}
             className="h-full border-l-0"
             onClose={() => onFilePanelOpenChange(false)}
           />

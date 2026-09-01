@@ -61,7 +61,9 @@ type FilePanelProps = {
   session: SessionSnapshot | null;
   browser: RemoteFilesController;
   isSelectingUpload?: boolean;
+  isSelectingDownload?: boolean;
   onUpload?: () => void;
+  onDownload?: (entry: RemoteFileEntry) => void;
   className?: string;
   onClose?: () => void;
 };
@@ -80,13 +82,19 @@ function ScopedFilePanel({
   session,
   browser,
   isSelectingUpload = false,
+  isSelectingDownload = false,
   onUpload,
+  onDownload,
   className,
   onClose,
 }: FilePanelProps) {
   const { directory, isConnected, isLoading } = browser;
   const [nameAction, setNameAction] = useState<RemoteEntryNameAction | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<RemoteFileEntry | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const selectedEntry =
+    directory?.entries.find((entry) => entry.path === selectedPath) ?? null;
+  const selectedFile = selectedEntry?.kind === "file" ? selectedEntry : null;
   const canMutate = isConnected && Boolean(directory) && !isLoading;
 
   return (
@@ -109,11 +117,28 @@ function ScopedFilePanel({
                     !directory ||
                     isLoading ||
                     isSelectingUpload ||
+                    isSelectingDownload ||
                     !onUpload
                   }
                   onClick={onUpload}
                 />
-                <PanelButton label="下载文件" icon={Download} disabled />
+                <PanelButton
+                  label={isSelectingDownload ? "正在选择保存位置" : "下载文件"}
+                  icon={Download}
+                  disabled={
+                    !isConnected ||
+                    !selectedFile ||
+                    isLoading ||
+                    isSelectingUpload ||
+                    isSelectingDownload ||
+                    !onDownload
+                  }
+                  onClick={
+                    selectedFile && onDownload
+                      ? () => onDownload(selectedFile)
+                      : undefined
+                  }
+                />
                 <PanelButton
                   label="新建文件夹"
                   icon={FolderPlus}
@@ -156,6 +181,10 @@ function ScopedFilePanel({
             <FilePanelContent
               session={session}
               browser={browser}
+              selectedPath={selectedPath}
+              isSelectingDownload={isSelectingUpload || isSelectingDownload}
+              onSelectedPathChange={setSelectedPath}
+              onDownload={onDownload}
               onRename={setNameAction}
               onDelete={setDeletingEntry}
             />
@@ -194,6 +223,7 @@ function ScopedFilePanel({
                 !directory ||
                 isLoading ||
                 isSelectingUpload ||
+                isSelectingDownload ||
                 !onUpload
               }
               onSelect={onUpload}
@@ -254,6 +284,10 @@ function ScopedFilePanel({
 type FilePanelContentProps = {
   session: SessionSnapshot | null;
   browser: RemoteFilesController;
+  selectedPath: string | null;
+  isSelectingDownload: boolean;
+  onSelectedPathChange: (path: string) => void;
+  onDownload?: (entry: RemoteFileEntry) => void;
   onRename: (action: RemoteEntryNameAction) => void;
   onDelete: (entry: RemoteFileEntry) => void;
 };
@@ -261,11 +295,14 @@ type FilePanelContentProps = {
 function FilePanelContent({
   session,
   browser,
+  selectedPath,
+  isSelectingDownload,
+  onSelectedPathChange,
+  onDownload,
   onRename,
   onDelete,
 }: FilePanelContentProps) {
   const { directory, error, isLoading } = browser;
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   if (!session) {
     return (
@@ -341,8 +378,10 @@ function FilePanelContent({
             entry={entry}
             isSelected={entry.path === selectedPath}
             isBusy={isLoading}
-            onSelect={() => setSelectedPath(entry.path)}
+            isSelectingDownload={isSelectingDownload}
+            onSelect={() => onSelectedPathChange(entry.path)}
             onOpenDirectory={browser.openDirectory}
+            onDownload={onDownload}
             onRename={() => onRename({ type: "rename", entry })}
             onDelete={() => onDelete(entry)}
             onRefresh={browser.refresh}
@@ -492,8 +531,10 @@ type RemoteFileRowProps = {
   entry: RemoteFileEntry;
   isSelected: boolean;
   isBusy: boolean;
+  isSelectingDownload: boolean;
   onSelect: () => void;
   onOpenDirectory: (path: string) => void;
+  onDownload?: (entry: RemoteFileEntry) => void;
   onRename: () => void;
   onDelete: () => void;
   onRefresh: () => void;
@@ -503,8 +544,10 @@ function RemoteFileRow({
   entry,
   isSelected,
   isBusy,
+  isSelectingDownload,
   onSelect,
   onOpenDirectory,
+  onDownload,
   onRename,
   onDelete,
   onRefresh,
@@ -570,6 +613,19 @@ function RemoteFileRow({
               <ContextMenuItem onSelect={() => onOpenDirectory(entry.path)}>
                 <FolderOpen />
                 打开目录
+              </ContextMenuItem>
+            </ContextMenuGroup>
+            <ContextMenuSeparator />
+          </>
+        ) : entry.kind === "file" ? (
+          <>
+            <ContextMenuGroup>
+              <ContextMenuItem
+                disabled={isBusy || isSelectingDownload || !onDownload}
+                onSelect={() => onDownload?.(entry)}
+              >
+                <Download />
+                下载到…
               </ContextMenuItem>
             </ContextMenuGroup>
             <ContextMenuSeparator />

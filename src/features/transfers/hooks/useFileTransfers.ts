@@ -1,11 +1,26 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { chooseLocalFilesForUpload } from "@/lib/tauri/dialogs";
 import { getCommandError } from "@/lib/tauri/errors";
-import { cancelRemoteFileUpload, uploadRemoteFile } from "@/lib/tauri/sftp";
+import {
+  attachRemoteFileTransfers,
+  cancelRemoteFileTransfer,
+  downloadRemoteFile,
+  selectLocalDownloadTarget,
+  selectLocalUploadFiles,
+  uploadRemoteFile,
+} from "@/lib/tauri/sftp";
+import type { CommandError } from "@/types/ipc";
+import type { RemoteFileEntry, RemoteFileTransferProgress } from "@/types/sftp";
 import type { FileTransferTask } from "@/types/transfers";
 
-const MAX_VISIBLE_TRANSFERS = 100;
+import { getQueueEtaSeconds, sortTransferTasks } from "../transferMetrics";
+import {
+  canManuallyRetryTransfer,
+  getAutomaticRetryDelayMs,
+  TRANSFER_CONCURRENCY_LIMIT,
+  TRANSFER_HISTORY_LIMIT,
+  TRANSFER_MAX_ATTEMPTS,
+} from "../transferPolicy";
 
 type StartUploadsInput = {
   sessionId: string;
@@ -14,74 +29,312 @@ type StartUploadsInput = {
   onCompleted: () => void;
 };
 
+type StartDownloadInput = {
+  sessionId: string;
+  connectionName: string;
+  entry: RemoteFileEntry;
+};
+
+type UploadTransferSpec = {
+  direction: "upload";
+  sessionId: string;
+  onCompleted: () => void;
+};
+
+type DownloadTransferSpec = {
+  direction: "download";
+  sessionId: string;
+};
+
+type TransferSpec = UploadTransferSpec | DownloadTransferSpec;
+
+type TransferCancellationRequest = {
+  runGeneration: number;
+  phase: "requested" | "accepted" | "releaseFailed";
+};
+
+type PreparedTransfer = {
+  task: FileTransferTask;
+  spec: TransferSpec | null;
+};
+
 export function useFileTransfers() {
   const [tasks, setTasks] = useState<FileTransferTask[]>([]);
   const [isSelectingFiles, setIsSelectingFiles] = useState(false);
+  const [isSelectingDownload, setIsSelectingDownload] = useState(false);
+  const [schedulerTick, setSchedulerTick] = useState(0);
+  const tasksRef = useRef<FileTransferTask[]>([]);
+  const specsRef = useRef(new Map<string, TransferSpec>());
+  const activeRunsRef = useRef(new Set<string>());
+  const cancellationRequestsRef = useRef(
+    new Map<string, TransferCancellationRequest>(),
+  );
+  const queueOrderRef = useRef(0);
+  const isSelectingLocalPathRef = useRef(false);
 
-  const updateTask = useCallback(
-    (transferId: string, update: (task: FileTransferTask) => FileTransferTask) => {
-      setTasks((current) =>
-        current.map((task) => (task.id === transferId ? update(task) : task)),
-      );
+  const commitTasks = useCallback(
+    (update: (current: FileTransferTask[]) => FileTransferTask[]) => {
+      const current = tasksRef.current;
+      const updated = update(current);
+      const next = pruneTransferHistory(updated);
+      if (next === current) {
+        return current;
+      }
+
+      tasksRef.current = next;
+      setTasks(next);
+
+      const retainedIds = new Set(next.map((task) => task.id));
+      for (const transferId of specsRef.current.keys()) {
+        if (!retainedIds.has(transferId)) {
+          specsRef.current.delete(transferId);
+        }
+      }
+      return next;
     },
     [],
   );
 
-  const runUpload = useCallback(
-    (
-      task: FileTransferTask,
-      localPath: string,
-      remoteDirectory: string,
-      sessionId: string,
-      onCompleted: () => void,
-    ) => {
-      void uploadRemoteFile(
-        {
-          transferId: task.id,
-          sessionId,
-          localPath,
-          remoteDirectory,
-        },
-        (progress) => {
-          if (progress.transferId !== task.id) {
-            return;
+  const updateTask = useCallback(
+    (transferId: string, update: (task: FileTransferTask) => FileTransferTask) => {
+      let didUpdate = false;
+      commitTasks((current) => {
+        const taskIndex = current.findIndex((task) => task.id === transferId);
+        if (taskIndex === -1) {
+          return current;
+        }
+
+        const task = current[taskIndex];
+        const nextTask = update(task);
+        if (nextTask === task) {
+          return current;
+        }
+
+        const next = [...current];
+        next[taskIndex] = nextTask;
+        didUpdate = true;
+        return next;
+      });
+      return didUpdate;
+    },
+    [commitTasks],
+  );
+
+  const addPreparedTransfers = useCallback(
+    (preparedTransfers: PreparedTransfer[]) => {
+      if (preparedTransfers.length === 0) {
+        return;
+      }
+
+      for (const { task, spec } of preparedTransfers) {
+        if (spec) {
+          specsRef.current.set(task.id, spec);
+        }
+      }
+      commitTasks((current) => [
+        ...preparedTransfers.map(({ task }) => task),
+        ...current,
+      ]);
+    },
+    [commitTasks],
+  );
+
+  const executeTransfer = useCallback(
+    async (transferId: string, attempt: number, runGeneration: number) => {
+      const spec = specsRef.current.get(transferId);
+      if (!spec) {
+        activeRunsRef.current.delete(transferId);
+        cancellationRequestsRef.current.delete(transferId);
+        updateTask(transferId, (task) =>
+          isRunningAttempt(task, attempt, runGeneration)
+            ? {
+                ...task,
+                status: "failed",
+                canRetry: false,
+                errorMessage: "传输任务信息已经失效，请重新选择文件。",
+                finishedAt: Date.now(),
+              }
+            : task,
+        );
+        setSchedulerTick((current) => current + 1);
+        return;
+      }
+
+      const onProgress = (progress: RemoteFileTransferProgress) => {
+        if (progress.transferId !== transferId) {
+          return;
+        }
+
+        updateTask(transferId, (task) => {
+          if (!isRunningAttempt(task, attempt, runGeneration)) {
+            return task;
           }
 
-          updateTask(task.id, (current) => ({
-            ...current,
+          return {
+            ...task,
             transferredBytes: progress.transferredBytes,
             totalBytes: progress.totalBytes,
             bytesPerSecond: progress.bytesPerSecond,
-          }));
-        },
-      )
-        .then((result) => {
-          updateTask(task.id, (current) => ({
-            ...current,
+          };
+        });
+      };
+
+      try {
+        const result =
+          spec.direction === "upload"
+            ? await uploadRemoteFile(
+                {
+                  transferId,
+                },
+                onProgress,
+              )
+            : await downloadRemoteFile(
+                {
+                  transferId,
+                },
+                onProgress,
+              );
+
+        const didComplete = updateTask(transferId, (task) => {
+          if (!isRunningAttempt(task, attempt, runGeneration)) {
+            return task;
+          }
+
+          return {
+            ...task,
             transferredBytes: result.totalBytes,
             totalBytes: result.totalBytes,
-            bytesPerSecond: 0,
             status: "completed",
+            nextRetryAt: null,
+            canRetry: false,
             isCancelling: false,
+            isReleaseBlocked: false,
+            errorMessage: null,
             finishedAt: Date.now(),
-          }));
-          onCompleted();
-        })
-        .catch((error: unknown) => {
-          const commandError = getCommandError(error);
-          const isCancelled = commandError.code === "transfer_cancelled";
-          updateTask(task.id, (current) => ({
-            ...current,
-            bytesPerSecond: 0,
-            status: isCancelled ? "cancelled" : "failed",
-            isCancelling: false,
-            errorMessage: isCancelled ? null : commandError.message,
-            finishedAt: Date.now(),
-          }));
+          };
         });
+        if (didComplete) {
+          specsRef.current.delete(transferId);
+        }
+        if (didComplete && spec.direction === "upload") {
+          try {
+            spec.onCompleted();
+          } catch {
+            // Directory refresh is best effort and must not turn a completed upload into a failure.
+          }
+        }
+      } catch (error: unknown) {
+        const commandError = getCommandError(error);
+        const cancellationRequest = cancellationRequestsRef.current.get(transferId);
+        const isCurrentCancellation =
+          cancellationRequest?.runGeneration === runGeneration;
+        handleTransferFailure({
+          transferId,
+          attempt,
+          runGeneration,
+          commandError,
+          isCancellationAccepted:
+            isCurrentCancellation && cancellationRequest?.phase === "accepted",
+          isCancellationPending:
+            isCurrentCancellation && cancellationRequest?.phase === "requested",
+          updateTask,
+          specs: specsRef.current,
+        });
+        if (commandError.code === "transfer_cancelled" && isCurrentCancellation) {
+          cancellationRequestsRef.current.delete(transferId);
+        }
+      } finally {
+        activeRunsRef.current.delete(transferId);
+        setSchedulerTick((current) => current + 1);
+      }
     },
     [updateTask],
   );
+
+  useEffect(() => {
+    const now = Date.now();
+    const starts: Array<{ id: string; attempt: number; runGeneration: number }> = [];
+    commitTasks((current) => {
+      const availableSlots = TRANSFER_CONCURRENCY_LIMIT - activeRunsRef.current.size;
+      if (availableSlots <= 0) {
+        return current;
+      }
+
+      const runnableTasks = current
+        .filter(
+          (task) =>
+            !cancellationRequestsRef.current.has(task.id) &&
+            (task.status === "queued" ||
+              (task.status === "retrying" &&
+                task.nextRetryAt !== null &&
+                task.nextRetryAt <= now)),
+        )
+        .sort((left, right) => left.queueOrder - right.queueOrder)
+        .slice(0, availableSlots);
+      if (runnableTasks.length === 0) {
+        return current;
+      }
+
+      for (const task of runnableTasks) {
+        const start = {
+          id: task.id,
+          attempt: task.attempt + 1,
+          runGeneration: task.runGeneration + 1,
+        };
+        starts.push(start);
+        activeRunsRef.current.add(task.id);
+      }
+      const startsById = new Map(starts.map((start) => [start.id, start]));
+      return current.map((task) => {
+        const start = startsById.get(task.id);
+        if (!start) {
+          return task;
+        }
+
+        return {
+          ...task,
+          status: "running",
+          attempt: start.attempt,
+          runGeneration: start.runGeneration,
+          nextRetryAt: null,
+          isCancelling: false,
+          isReleaseBlocked: false,
+          errorMessage: null,
+          startedAt: now,
+          finishedAt: null,
+        };
+      });
+    });
+
+    for (const { id, attempt, runGeneration } of starts) {
+      void executeTransfer(id, attempt, runGeneration);
+    }
+  }, [commitTasks, executeTransfer, schedulerTick, tasks]);
+
+  const nextRetryAt = useMemo(
+    () =>
+      tasks.reduce<number | null>((nearest, task) => {
+        if (task.status !== "retrying" || task.nextRetryAt === null) {
+          return nearest;
+        }
+        return nearest === null
+          ? task.nextRetryAt
+          : Math.min(nearest, task.nextRetryAt);
+      }, null),
+    [tasks],
+  );
+
+  useEffect(() => {
+    if (nextRetryAt === null) {
+      return;
+    }
+
+    const timeout = window.setTimeout(
+      () => setSchedulerTick((current) => current + 1),
+      Math.max(0, nextRetryAt - Date.now()) + 20,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [nextRetryAt]);
 
   const selectAndUpload = useCallback(
     async ({
@@ -90,81 +343,657 @@ export function useFileTransfers() {
       remoteDirectory,
       onCompleted,
     }: StartUploadsInput) => {
-      if (isSelectingFiles) {
+      if (isSelectingLocalPathRef.current) {
         return;
       }
 
+      isSelectingLocalPathRef.current = true;
       setIsSelectingFiles(true);
       try {
-        const localPaths = await chooseLocalFilesForUpload();
-        for (const localPath of localPaths) {
-          const task: FileTransferTask = {
-            id: crypto.randomUUID(),
-            direction: "upload",
-            fileName: fileNameFromPath(localPath),
-            connectionName,
-            transferredBytes: 0,
-            totalBytes: 0,
-            bytesPerSecond: 0,
-            status: "running",
-            isCancelling: false,
-            errorMessage: null,
-            startedAt: Date.now(),
-            finishedAt: null,
-          };
-          setTasks((current) => [task, ...current].slice(0, MAX_VISIBLE_TRANSFERS));
-          runUpload(task, localPath, remoteDirectory, sessionId, onCompleted);
+        const selections = await selectLocalUploadFiles({
+          sessionId,
+          remoteDirectory,
+        });
+        if (selections.length === 0) {
+          return;
         }
-      } catch (error) {
-        const commandError = getCommandError(error);
-        const failedTask: FileTransferTask = {
-          id: crypto.randomUUID(),
-          direction: "upload",
-          fileName: "选择本地文件",
-          connectionName,
-          transferredBytes: 0,
-          totalBytes: 0,
-          bytesPerSecond: 0,
-          status: "failed",
-          isCancelling: false,
-          errorMessage: commandError.message,
-          startedAt: Date.now(),
-          finishedAt: Date.now(),
-        };
-        setTasks((current) => [failedTask, ...current].slice(0, MAX_VISIBLE_TRANSFERS));
+
+        const transferIds = selections.map((selection) => selection.transferId);
+        try {
+          await attachRemoteFileTransfers({ transferIds });
+        } catch (error: unknown) {
+          await releaseRemoteFileTransfers(transferIds);
+          throw error;
+        }
+        const preparedTransfers = selections.map((selection): PreparedTransfer => {
+          const createdAt = Date.now();
+          const queueOrder = ++queueOrderRef.current;
+          return {
+            task: createTransferTask({
+              id: selection.transferId,
+              direction: "upload",
+              fileName: selection.fileName,
+              connectionName,
+              totalBytes: selection.totalBytes,
+              queueOrder,
+              createdAt,
+            }),
+            spec: {
+              direction: "upload",
+              sessionId,
+              onCompleted,
+            },
+          };
+        });
+        addPreparedTransfers(preparedTransfers);
+      } catch (error: unknown) {
+        const createdAt = Date.now();
+        addPreparedTransfers([
+          {
+            task: createFailedSelectionTask({
+              id: crypto.randomUUID(),
+              direction: "upload",
+              fileName: "选择本地文件",
+              connectionName,
+              commandError: getCommandError(error),
+              queueOrder: ++queueOrderRef.current,
+              createdAt,
+            }),
+            spec: null,
+          },
+        ]);
       } finally {
+        isSelectingLocalPathRef.current = false;
         setIsSelectingFiles(false);
       }
     },
-    [isSelectingFiles, runUpload],
+    [addPreparedTransfers],
   );
 
-  const cancelUpload = useCallback(
+  const selectAndDownload = useCallback(
+    async ({ sessionId, connectionName, entry }: StartDownloadInput) => {
+      if (entry.kind !== "file" || isSelectingLocalPathRef.current) {
+        return;
+      }
+
+      isSelectingLocalPathRef.current = true;
+      setIsSelectingDownload(true);
+      try {
+        const selection = await selectLocalDownloadTarget({
+          sessionId,
+          remotePath: entry.path,
+          defaultFileName: entry.name,
+        });
+        if (!selection) {
+          return;
+        }
+
+        try {
+          await attachRemoteFileTransfers({ transferIds: [selection.transferId] });
+        } catch (error: unknown) {
+          await releaseRemoteFileTransfers([selection.transferId]);
+          throw error;
+        }
+
+        const createdAt = Date.now();
+        const task = createTransferTask({
+          id: selection.transferId,
+          direction: "download",
+          fileName: entry.name,
+          connectionName,
+          totalBytes: selection.totalBytes,
+          queueOrder: ++queueOrderRef.current,
+          createdAt,
+        });
+        addPreparedTransfers([
+          {
+            task,
+            spec: {
+              direction: "download",
+              sessionId,
+            },
+          },
+        ]);
+      } catch (error: unknown) {
+        const createdAt = Date.now();
+        addPreparedTransfers([
+          {
+            task: createFailedSelectionTask({
+              id: crypto.randomUUID(),
+              direction: "download",
+              fileName: entry.name,
+              connectionName,
+              commandError: getCommandError(error),
+              queueOrder: ++queueOrderRef.current,
+              createdAt,
+            }),
+            spec: null,
+          },
+        ]);
+      } finally {
+        isSelectingLocalPathRef.current = false;
+        setIsSelectingDownload(false);
+      }
+    },
+    [addPreparedTransfers],
+  );
+
+  const cancelTransfer = useCallback(
     (transferId: string) => {
-      updateTask(transferId, (task) => ({ ...task, isCancelling: true }));
-      void cancelRemoteFileUpload(transferId).catch(() => {
-        updateTask(transferId, (task) => ({ ...task, isCancelling: false }));
+      const task = tasksRef.current.find((candidate) => candidate.id === transferId);
+      if (!task || !["queued", "retrying", "running"].includes(task.status)) {
+        return;
+      }
+
+      const runGeneration = task.runGeneration;
+      cancellationRequestsRef.current.set(transferId, {
+        runGeneration,
+        phase: "requested",
       });
+      updateTask(transferId, (current) =>
+        current.runGeneration === runGeneration &&
+        ["queued", "retrying", "running"].includes(current.status)
+          ? {
+              ...current,
+              isCancelling: true,
+              isReleaseBlocked: false,
+              errorMessage: null,
+            }
+          : current,
+      );
+      void cancelRemoteFileTransfer(transferId)
+        .then((status) => {
+          const request = cancellationRequestsRef.current.get(transferId);
+          if (
+            request?.runGeneration !== runGeneration ||
+            request.phase !== "requested"
+          ) {
+            return;
+          }
+
+          const currentTask = tasksRef.current.find(
+            (candidate) => candidate.id === transferId,
+          );
+          const isNowWaiting =
+            currentTask?.runGeneration === runGeneration &&
+            !activeRunsRef.current.has(transferId) &&
+            (currentTask.status === "queued" || currentTask.status === "retrying");
+          if (status === "accepted" || (status === "notFound" && isNowWaiting)) {
+            cancellationRequestsRef.current.set(transferId, {
+              runGeneration,
+              phase: "accepted",
+            });
+            const didCancel = updateTask(transferId, (current) =>
+              current.runGeneration === runGeneration &&
+              ["queued", "retrying", "running", "failed"].includes(current.status)
+                ? {
+                    ...current,
+                    bytesPerSecond: 0,
+                    status: "cancelled",
+                    nextRetryAt: null,
+                    canRetry: false,
+                    isCancelling: false,
+                    isReleaseBlocked: false,
+                    errorMessage: null,
+                    finishedAt: Date.now(),
+                  }
+                : current,
+            );
+            if (didCancel) {
+              specsRef.current.delete(transferId);
+            }
+            cancellationRequestsRef.current.delete(transferId);
+            setSchedulerTick((current) => current + 1);
+            return;
+          }
+
+          if (status === "tooLate" && isNowWaiting) {
+            cancellationRequestsRef.current.set(transferId, {
+              runGeneration,
+              phase: "releaseFailed",
+            });
+          } else {
+            cancellationRequestsRef.current.delete(transferId);
+          }
+          updateTask(transferId, (current) => {
+            if (current.runGeneration !== runGeneration) {
+              return current;
+            }
+            const canShowReleaseFailure =
+              current.status === "queued" ||
+              current.status === "retrying" ||
+              current.status === "running" ||
+              (current.status === "failed" &&
+                current.canRetry &&
+                specsRef.current.has(transferId));
+            if (!canShowReleaseFailure) {
+              return current;
+            }
+
+            return {
+              ...current,
+              isCancelling: false,
+              isReleaseBlocked: status === "tooLate" && isNowWaiting,
+              errorMessage:
+                status === "tooLate"
+                  ? "传输已进入最终写入阶段，当前无法取消；可再次尝试释放任务。"
+                  : "传输任务已经结束，当前无法取消。",
+            };
+          });
+          setSchedulerTick((current) => current + 1);
+        })
+        .catch((error: unknown) => {
+          const request = cancellationRequestsRef.current.get(transferId);
+          if (
+            request?.runGeneration !== runGeneration ||
+            request.phase !== "requested"
+          ) {
+            return;
+          }
+
+          const currentTask = tasksRef.current.find(
+            (candidate) => candidate.id === transferId,
+          );
+          const shouldHoldForRelease =
+            currentTask?.runGeneration === runGeneration &&
+            !activeRunsRef.current.has(transferId) &&
+            (currentTask.status === "queued" || currentTask.status === "retrying");
+          if (shouldHoldForRelease) {
+            cancellationRequestsRef.current.set(transferId, {
+              runGeneration,
+              phase: "releaseFailed",
+            });
+          } else {
+            cancellationRequestsRef.current.delete(transferId);
+          }
+          const commandError = getCommandError(error);
+          updateTask(transferId, (current) => {
+            if (current.runGeneration !== runGeneration) {
+              return current;
+            }
+            const canShowReleaseFailure =
+              current.status === "queued" ||
+              current.status === "retrying" ||
+              current.status === "running" ||
+              (current.status === "failed" &&
+                current.canRetry &&
+                specsRef.current.has(transferId));
+            if (!canShowReleaseFailure) {
+              return current;
+            }
+
+            return {
+              ...current,
+              isCancelling: false,
+              isReleaseBlocked: shouldHoldForRelease,
+              errorMessage: `取消失败：${commandError.message}。可再次尝试释放任务。`,
+            };
+          });
+          setSchedulerTick((current) => current + 1);
+        });
     },
     [updateTask],
   );
 
-  const activeCount = useMemo(
+  const retryTransfer = useCallback(
+    (transferId: string) => {
+      const task = tasksRef.current.find((candidate) => candidate.id === transferId);
+      if (
+        !task ||
+        task.status !== "failed" ||
+        !task.canRetry ||
+        task.isCancelling ||
+        cancellationRequestsRef.current.has(transferId) ||
+        !specsRef.current.has(transferId)
+      ) {
+        return;
+      }
+
+      updateTask(transferId, (current) => ({
+        ...current,
+        status: "queued",
+        transferredBytes: 0,
+        bytesPerSecond: 0,
+        attempt: 0,
+        nextRetryAt: null,
+        canRetry: false,
+        isCancelling: false,
+        isReleaseBlocked: false,
+        errorMessage: null,
+        queueOrder: ++queueOrderRef.current,
+        startedAt: null,
+        finishedAt: null,
+      }));
+    },
+    [updateTask],
+  );
+
+  const discardTransfer = useCallback(
+    (transferId: string) => {
+      const task = tasksRef.current.find((candidate) => candidate.id === transferId);
+      if (
+        !task ||
+        task.status !== "failed" ||
+        !task.canRetry ||
+        task.isCancelling ||
+        !specsRef.current.has(transferId)
+      ) {
+        return;
+      }
+
+      updateTask(transferId, (current) =>
+        current.status === "failed"
+          ? { ...current, isCancelling: true, isReleaseBlocked: false }
+          : current,
+      );
+      void cancelRemoteFileTransfer(transferId)
+        .then((status) => {
+          if (status === "tooLate") {
+            updateTask(transferId, (current) =>
+              current.status === "failed"
+                ? {
+                    ...current,
+                    isCancelling: false,
+                    isReleaseBlocked: false,
+                    errorMessage: "传输仍在结束，暂时无法放弃重试。",
+                  }
+                : current,
+            );
+            return;
+          }
+
+          specsRef.current.delete(transferId);
+          updateTask(transferId, (current) =>
+            current.status === "failed"
+              ? {
+                  ...current,
+                  canRetry: false,
+                  isCancelling: false,
+                  isReleaseBlocked: false,
+                }
+              : current,
+          );
+        })
+        .catch((error: unknown) => {
+          const commandError = getCommandError(error);
+          updateTask(transferId, (current) =>
+            current.status === "failed"
+              ? {
+                  ...current,
+                  isCancelling: false,
+                  isReleaseBlocked: false,
+                  errorMessage: `释放重试任务失败：${commandError.message}`,
+                }
+              : current,
+          );
+        });
+    },
+    [updateTask],
+  );
+
+  const cancelTransfersForSession = useCallback(
+    (sessionId: string) => {
+      const transferIds = new Set(
+        [...specsRef.current.entries()]
+          .filter(([, spec]) => spec.sessionId === sessionId)
+          .map(([transferId]) => transferId),
+      );
+      if (transferIds.size === 0) {
+        return;
+      }
+
+      for (const transferId of transferIds) {
+        cancellationRequestsRef.current.delete(transferId);
+        specsRef.current.delete(transferId);
+        void cancelRemoteFileTransfer(transferId).catch(() => {
+          // Closing the SSH session is the authoritative backend cleanup path.
+        });
+      }
+      commitTasks((current) =>
+        current.map((task) =>
+          transferIds.has(task.id) &&
+          (isPendingTransfer(task) || (task.status === "failed" && task.canRetry))
+            ? {
+                ...task,
+                bytesPerSecond: 0,
+                status: "cancelled",
+                nextRetryAt: null,
+                canRetry: false,
+                isCancelling: false,
+                isReleaseBlocked: false,
+                errorMessage: null,
+                finishedAt: Date.now(),
+              }
+            : task,
+        ),
+      );
+    },
+    [commitTasks],
+  );
+
+  const sortedTasks = useMemo(() => sortTransferTasks(tasks), [tasks]);
+  const runningCount = useMemo(
     () => tasks.filter((task) => task.status === "running").length,
     [tasks],
   );
+  const waitingCount = useMemo(
+    () =>
+      tasks.filter((task) => task.status === "queued" || task.status === "retrying")
+        .length,
+    [tasks],
+  );
+  const failedCount = useMemo(
+    () => tasks.filter((task) => task.status === "failed").length,
+    [tasks],
+  );
+  const uploadCount = useMemo(
+    () =>
+      tasks.filter((task) => task.direction === "upload" && isPendingTransfer(task))
+        .length,
+    [tasks],
+  );
+  const downloadCount = useMemo(
+    () =>
+      tasks.filter((task) => task.direction === "download" && isPendingTransfer(task))
+        .length,
+    [tasks],
+  );
+  const queueEtaSeconds = useMemo(() => getQueueEtaSeconds(tasks), [tasks]);
 
   return {
-    tasks,
-    activeCount,
+    tasks: sortedTasks,
+    activeCount: runningCount,
+    runningCount,
+    waitingCount,
+    failedCount,
+    uploadCount,
+    downloadCount,
+    concurrencyLimit: TRANSFER_CONCURRENCY_LIMIT,
+    queueEtaSeconds,
     isSelectingFiles,
+    isSelectingDownload,
     selectAndUpload,
-    cancelUpload,
+    selectAndDownload,
+    cancelTransfer,
+    cancelTransfersForSession,
+    retryTransfer,
+    discardTransfer,
   };
 }
 
 export type FileTransfersController = ReturnType<typeof useFileTransfers>;
 
-function fileNameFromPath(path: string) {
-  return path.split(/[\\/]/).pop() || "未命名文件";
+type CreateTransferTaskInput = Pick<
+  FileTransferTask,
+  | "id"
+  | "direction"
+  | "fileName"
+  | "connectionName"
+  | "totalBytes"
+  | "queueOrder"
+  | "createdAt"
+>;
+
+function createTransferTask(input: CreateTransferTaskInput): FileTransferTask {
+  return {
+    ...input,
+    transferredBytes: 0,
+    bytesPerSecond: 0,
+    status: "queued",
+    attempt: 0,
+    runGeneration: 0,
+    maxAttempts: TRANSFER_MAX_ATTEMPTS,
+    nextRetryAt: null,
+    canRetry: false,
+    isCancelling: false,
+    isReleaseBlocked: false,
+    errorMessage: null,
+    startedAt: null,
+    finishedAt: null,
+  };
+}
+
+function createFailedSelectionTask({
+  commandError,
+  ...input
+}: Omit<CreateTransferTaskInput, "totalBytes"> & {
+  commandError: CommandError;
+}): FileTransferTask {
+  return {
+    ...createTransferTask({ ...input, totalBytes: null }),
+    status: "failed",
+    errorMessage: commandError.message,
+    finishedAt: Date.now(),
+  };
+}
+
+type HandleTransferFailureInput = {
+  transferId: string;
+  attempt: number;
+  runGeneration: number;
+  commandError: CommandError;
+  isCancellationAccepted: boolean;
+  isCancellationPending: boolean;
+  updateTask: (
+    transferId: string,
+    update: (task: FileTransferTask) => FileTransferTask,
+  ) => boolean;
+  specs: Map<string, TransferSpec>;
+};
+
+function handleTransferFailure({
+  transferId,
+  attempt,
+  runGeneration,
+  commandError,
+  isCancellationAccepted,
+  isCancellationPending,
+  updateTask,
+  specs,
+}: HandleTransferFailureInput) {
+  if (isCancellationAccepted || commandError.code === "transfer_cancelled") {
+    const didCancel = updateTask(transferId, (task) =>
+      isRunningAttempt(task, attempt, runGeneration)
+        ? {
+            ...task,
+            bytesPerSecond: 0,
+            status: "cancelled",
+            nextRetryAt: null,
+            canRetry: false,
+            isCancelling: false,
+            isReleaseBlocked: false,
+            errorMessage: null,
+            finishedAt: Date.now(),
+          }
+        : task,
+    );
+    if (didCancel) {
+      specs.delete(transferId);
+    }
+    return;
+  }
+
+  const retryDelay = getAutomaticRetryDelayMs(commandError.code, attempt);
+  if (attempt < TRANSFER_MAX_ATTEMPTS && retryDelay !== null) {
+    updateTask(transferId, (task) =>
+      isRunningAttempt(task, attempt, runGeneration)
+        ? {
+            ...task,
+            transferredBytes: 0,
+            bytesPerSecond: 0,
+            status: "retrying",
+            nextRetryAt: Date.now() + retryDelay,
+            canRetry: true,
+            isCancelling: isCancellationPending,
+            errorMessage: commandError.message,
+            finishedAt: null,
+          }
+        : task,
+    );
+    return;
+  }
+
+  const canRetry = canManuallyRetryTransfer(commandError.code);
+  const didFail = updateTask(transferId, (task) =>
+    isRunningAttempt(task, attempt, runGeneration)
+      ? {
+          ...task,
+          bytesPerSecond: 0,
+          status: "failed",
+          nextRetryAt: null,
+          canRetry,
+          isCancelling: canRetry && isCancellationPending,
+          errorMessage: commandError.message,
+          finishedAt: Date.now(),
+        }
+      : task,
+  );
+  if (didFail && !canRetry) {
+    specs.delete(transferId);
+  }
+}
+
+function pruneTransferHistory(tasks: FileTransferTask[]) {
+  const protectedTasks = tasks.filter(isProtectedTransfer);
+  const terminalTasks = tasks
+    .filter((task) => !isProtectedTransfer(task))
+    .sort(
+      (left, right) =>
+        (right.finishedAt ?? right.createdAt) - (left.finishedAt ?? left.createdAt),
+    );
+  if (terminalTasks.length <= TRANSFER_HISTORY_LIMIT) {
+    return tasks;
+  }
+
+  const retainedTerminalTasks = terminalTasks.slice(0, TRANSFER_HISTORY_LIMIT);
+  const retainedIds = new Set(
+    [...protectedTasks, ...retainedTerminalTasks].map((task) => task.id),
+  );
+  return tasks.filter((task) => retainedIds.has(task.id));
+}
+
+function isRunningAttempt(
+  task: FileTransferTask,
+  attempt: number,
+  runGeneration: number,
+) {
+  return (
+    task.status === "running" &&
+    task.attempt === attempt &&
+    task.runGeneration === runGeneration
+  );
+}
+
+function isPendingTransfer(task: FileTransferTask) {
+  return (
+    task.status === "queued" || task.status === "running" || task.status === "retrying"
+  );
+}
+
+function isProtectedTransfer(task: FileTransferTask) {
+  return isPendingTransfer(task) || (task.status === "failed" && task.canRetry);
+}
+
+async function releaseRemoteFileTransfers(transferIds: string[]) {
+  await Promise.allSettled(transferIds.map(cancelRemoteFileTransfer));
 }

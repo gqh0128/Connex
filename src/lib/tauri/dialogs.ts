@@ -31,20 +31,6 @@ export function chooseConnectionBackupImportPath() {
   });
 }
 
-export async function chooseLocalFilesForUpload() {
-  const selected = await open({
-    title: "选择要上传的文件",
-    directory: false,
-    multiple: true,
-  });
-
-  if (!selected) {
-    return [];
-  }
-
-  return Array.isArray(selected) ? selected : [selected];
-}
-
 export function chooseTerminalFontFile() {
   return open({
     title: "导入终端字体",
