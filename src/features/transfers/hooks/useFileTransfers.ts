@@ -5,6 +5,7 @@ import {
   attachRemoteFileTransfers,
   cancelRemoteFileTransfer,
   downloadRemoteFile,
+  pauseRemoteFileTransfer,
   selectLocalDownloadTarget,
   selectLocalUploadFiles,
   uploadRemoteFile,
@@ -53,6 +54,11 @@ type TransferCancellationRequest = {
   phase: "requested" | "accepted" | "releaseFailed";
 };
 
+type TransferPauseRequest = {
+  runGeneration: number;
+  phase: "requested" | "accepted";
+};
+
 type PreparedTransfer = {
   task: FileTransferTask;
   spec: TransferSpec | null;
@@ -69,6 +75,7 @@ export function useFileTransfers() {
   const cancellationRequestsRef = useRef(
     new Map<string, TransferCancellationRequest>(),
   );
+  const pauseRequestsRef = useRef(new Map<string, TransferPauseRequest>());
   const queueOrderRef = useRef(0);
   const isSelectingLocalPathRef = useRef(false);
 
@@ -145,12 +152,15 @@ export function useFileTransfers() {
       if (!spec) {
         activeRunsRef.current.delete(transferId);
         cancellationRequestsRef.current.delete(transferId);
+        pauseRequestsRef.current.delete(transferId);
         updateTask(transferId, (task) =>
           isRunningAttempt(task, attempt, runGeneration)
             ? {
                 ...task,
                 status: "failed",
                 canRetry: false,
+                isPausing: false,
+                isResuming: false,
                 errorMessage: "传输任务信息已经失效，请重新选择文件。",
                 finishedAt: Date.now(),
               }
@@ -207,6 +217,8 @@ export function useFileTransfers() {
             status: "completed",
             nextRetryAt: null,
             canRetry: false,
+            isPausing: false,
+            isResuming: false,
             isCancelling: false,
             isReleaseBlocked: false,
             errorMessage: null,
@@ -226,6 +238,7 @@ export function useFileTransfers() {
       } catch (error: unknown) {
         const commandError = getCommandError(error);
         const cancellationRequest = cancellationRequestsRef.current.get(transferId);
+        const pauseRequest = pauseRequestsRef.current.get(transferId);
         const isCurrentCancellation =
           cancellationRequest?.runGeneration === runGeneration;
         handleTransferFailure({
@@ -237,11 +250,18 @@ export function useFileTransfers() {
             isCurrentCancellation && cancellationRequest?.phase === "accepted",
           isCancellationPending:
             isCurrentCancellation && cancellationRequest?.phase === "requested",
+          isPauseRequested: pauseRequest?.runGeneration === runGeneration,
           updateTask,
           specs: specsRef.current,
         });
         if (commandError.code === "transfer_cancelled" && isCurrentCancellation) {
           cancellationRequestsRef.current.delete(transferId);
+        }
+        if (
+          commandError.code === "transfer_paused" &&
+          pauseRequest?.runGeneration === runGeneration
+        ) {
+          pauseRequestsRef.current.delete(transferId);
         }
       } finally {
         activeRunsRef.current.delete(transferId);
@@ -264,6 +284,7 @@ export function useFileTransfers() {
         .filter(
           (task) =>
             !cancellationRequestsRef.current.has(task.id) &&
+            !pauseRequestsRef.current.has(task.id) &&
             (task.status === "queued" ||
               (task.status === "retrying" &&
                 task.nextRetryAt !== null &&
@@ -278,7 +299,7 @@ export function useFileTransfers() {
       for (const task of runnableTasks) {
         const start = {
           id: task.id,
-          attempt: task.attempt + 1,
+          attempt: task.isResuming ? task.attempt : task.attempt + 1,
           runGeneration: task.runGeneration + 1,
         };
         starts.push(start);
@@ -297,6 +318,8 @@ export function useFileTransfers() {
           attempt: start.attempt,
           runGeneration: start.runGeneration,
           nextRetryAt: null,
+          isPausing: false,
+          isResuming: false,
           isCancelling: false,
           isReleaseBlocked: false,
           errorMessage: null,
@@ -478,10 +501,133 @@ export function useFileTransfers() {
     [addPreparedTransfers],
   );
 
+  const pauseTransfer = useCallback(
+    (transferId: string) => {
+      const task = tasksRef.current.find((candidate) => candidate.id === transferId);
+      if (
+        !task ||
+        !["queued", "retrying", "running"].includes(task.status) ||
+        task.isCancelling ||
+        task.isPausing
+      ) {
+        return;
+      }
+
+      if (task.status !== "running" && !activeRunsRef.current.has(transferId)) {
+        updateTask(transferId, (current) =>
+          current.status === "queued" || current.status === "retrying"
+            ? {
+                ...current,
+                status: "paused",
+                bytesPerSecond: 0,
+                nextRetryAt: null,
+                isPausing: false,
+                isResuming: false,
+                errorMessage: null,
+                finishedAt: null,
+              }
+            : current,
+        );
+        return;
+      }
+
+      const runGeneration = task.runGeneration;
+      pauseRequestsRef.current.set(transferId, {
+        runGeneration,
+        phase: "requested",
+      });
+      updateTask(transferId, (current) =>
+        isRunningGeneration(current, runGeneration)
+          ? { ...current, isPausing: true, errorMessage: null }
+          : current,
+      );
+      void pauseRemoteFileTransfer(transferId)
+        .then((status) => {
+          const request = pauseRequestsRef.current.get(transferId);
+          if (
+            request?.runGeneration !== runGeneration ||
+            request.phase !== "requested"
+          ) {
+            return;
+          }
+          if (status === "accepted") {
+            pauseRequestsRef.current.set(transferId, {
+              runGeneration,
+              phase: "accepted",
+            });
+            return;
+          }
+
+          pauseRequestsRef.current.delete(transferId);
+          updateTask(transferId, (current) =>
+            isRunningGeneration(current, runGeneration)
+              ? {
+                  ...current,
+                  isPausing: false,
+                  errorMessage:
+                    status === "tooLate"
+                      ? "传输已进入最终写入阶段，当前无法暂停。"
+                      : "传输任务已经结束，当前无法暂停。",
+                }
+              : current,
+          );
+        })
+        .catch((error: unknown) => {
+          const request = pauseRequestsRef.current.get(transferId);
+          if (request?.runGeneration !== runGeneration) {
+            return;
+          }
+          pauseRequestsRef.current.delete(transferId);
+          const commandError = getCommandError(error);
+          updateTask(transferId, (current) =>
+            isRunningGeneration(current, runGeneration)
+              ? {
+                  ...current,
+                  isPausing: false,
+                  errorMessage: `暂停失败：${commandError.message}`,
+                }
+              : current,
+          );
+        });
+    },
+    [updateTask],
+  );
+
+  const resumeTransfer = useCallback(
+    (transferId: string) => {
+      const task = tasksRef.current.find((candidate) => candidate.id === transferId);
+      if (!task || task.status !== "paused" || task.isCancelling || task.isPausing) {
+        return;
+      }
+      pauseRequestsRef.current.delete(transferId);
+      updateTask(transferId, (current) =>
+        current.status === "paused"
+          ? {
+              ...current,
+              status: "queued",
+              bytesPerSecond: 0,
+              nextRetryAt: null,
+              isPausing: false,
+              isCancelling: false,
+              isReleaseBlocked: false,
+              errorMessage: null,
+              queueOrder: ++queueOrderRef.current,
+              finishedAt: null,
+            }
+          : current,
+      );
+    },
+    [updateTask],
+  );
+
   const cancelTransfer = useCallback(
     (transferId: string) => {
       const task = tasksRef.current.find((candidate) => candidate.id === transferId);
-      if (!task || !["queued", "retrying", "running"].includes(task.status)) {
+      if (
+        !task ||
+        !["queued", "retrying", "running", "paused"].includes(task.status) ||
+        task.isPausing
+      ) {
         return;
       }
 
@@ -492,7 +638,7 @@ export function useFileTransfers() {
       });
       updateTask(transferId, (current) =>
         current.runGeneration === runGeneration &&
-        ["queued", "retrying", "running"].includes(current.status)
+        ["queued", "retrying", "running", "paused"].includes(current.status)
           ? {
               ...current,
               isCancelling: true,
@@ -517,7 +663,9 @@ export function useFileTransfers() {
           const isNowWaiting =
             currentTask?.runGeneration === runGeneration &&
             !activeRunsRef.current.has(transferId) &&
-            (currentTask.status === "queued" || currentTask.status === "retrying");
+            (currentTask.status === "queued" ||
+              currentTask.status === "retrying" ||
+              currentTask.status === "paused");
           if (status === "accepted" || (status === "notFound" && isNowWaiting)) {
             cancellationRequestsRef.current.set(transferId, {
               runGeneration,
@@ -525,13 +673,17 @@ export function useFileTransfers() {
             });
             const didCancel = updateTask(transferId, (current) =>
               current.runGeneration === runGeneration &&
-              ["queued", "retrying", "running", "failed"].includes(current.status)
+              ["queued", "retrying", "running", "paused", "failed"].includes(
+                current.status,
+              )
                 ? {
                     ...current,
                     bytesPerSecond: 0,
                     status: "cancelled",
                     nextRetryAt: null,
                     canRetry: false,
+                    isPausing: false,
+                    isResuming: false,
                     isCancelling: false,
                     isReleaseBlocked: false,
                     errorMessage: null,
@@ -563,6 +715,7 @@ export function useFileTransfers() {
               current.status === "queued" ||
               current.status === "retrying" ||
               current.status === "running" ||
+              current.status === "paused" ||
               (current.status === "failed" &&
                 current.canRetry &&
                 specsRef.current.has(transferId));
@@ -597,7 +750,9 @@ export function useFileTransfers() {
           const shouldHoldForRelease =
             currentTask?.runGeneration === runGeneration &&
             !activeRunsRef.current.has(transferId) &&
-            (currentTask.status === "queued" || currentTask.status === "retrying");
+            (currentTask.status === "queued" ||
+              currentTask.status === "retrying" ||
+              currentTask.status === "paused");
           if (shouldHoldForRelease) {
             cancellationRequestsRef.current.set(transferId, {
               runGeneration,
@@ -615,6 +770,7 @@ export function useFileTransfers() {
               current.status === "queued" ||
               current.status === "retrying" ||
               current.status === "running" ||
+              current.status === "paused" ||
               (current.status === "failed" &&
                 current.canRetry &&
                 specsRef.current.has(transferId));
@@ -657,6 +813,8 @@ export function useFileTransfers() {
         attempt: 0,
         nextRetryAt: null,
         canRetry: false,
+        isPausing: false,
+        isResuming: false,
         isCancelling: false,
         isReleaseBlocked: false,
         errorMessage: null,
@@ -744,6 +902,7 @@ export function useFileTransfers() {
 
       for (const transferId of transferIds) {
         cancellationRequestsRef.current.delete(transferId);
+        pauseRequestsRef.current.delete(transferId);
         specsRef.current.delete(transferId);
         void cancelRemoteFileTransfer(transferId).catch(() => {
           // Closing the SSH session is the authoritative backend cleanup path.
@@ -759,6 +918,8 @@ export function useFileTransfers() {
                 status: "cancelled",
                 nextRetryAt: null,
                 canRetry: false,
+                isPausing: false,
+                isResuming: false,
                 isCancelling: false,
                 isReleaseBlocked: false,
                 errorMessage: null,
@@ -786,6 +947,10 @@ export function useFileTransfers() {
     () => tasks.filter((task) => task.status === "failed").length,
     [tasks],
   );
+  const pausedCount = useMemo(
+    () => tasks.filter((task) => task.status === "paused").length,
+    [tasks],
+  );
   const uploadCount = useMemo(
     () =>
       tasks.filter((task) => task.direction === "upload" && isPendingTransfer(task))
@@ -805,6 +970,7 @@ export function useFileTransfers() {
     activeCount: runningCount,
     runningCount,
     waitingCount,
+    pausedCount,
     failedCount,
     uploadCount,
     downloadCount,
@@ -814,6 +980,8 @@ export function useFileTransfers() {
     isSelectingDownload,
     selectAndUpload,
     selectAndDownload,
+    pauseTransfer,
+    resumeTransfer,
     cancelTransfer,
     cancelTransfersForSession,
     retryTransfer,
@@ -845,6 +1013,8 @@ function createTransferTask(input: CreateTransferTaskInput): FileTransferTask {
     maxAttempts: TRANSFER_MAX_ATTEMPTS,
     nextRetryAt: null,
     canRetry: false,
+    isPausing: false,
+    isResuming: false,
     isCancelling: false,
     isReleaseBlocked: false,
     errorMessage: null,
@@ -874,6 +1044,7 @@ type HandleTransferFailureInput = {
   commandError: CommandError;
   isCancellationAccepted: boolean;
   isCancellationPending: boolean;
+  isPauseRequested: boolean;
   updateTask: (
     transferId: string,
     update: (task: FileTransferTask) => FileTransferTask,
@@ -888,9 +1059,31 @@ function handleTransferFailure({
   commandError,
   isCancellationAccepted,
   isCancellationPending,
+  isPauseRequested,
   updateTask,
   specs,
 }: HandleTransferFailureInput) {
+  if (isPauseRequested && commandError.code === "transfer_paused") {
+    updateTask(transferId, (task) =>
+      isRunningAttempt(task, attempt, runGeneration)
+        ? {
+            ...task,
+            bytesPerSecond: 0,
+            status: "paused",
+            nextRetryAt: null,
+            canRetry: false,
+            isPausing: false,
+            isResuming: true,
+            isCancelling: false,
+            isReleaseBlocked: false,
+            errorMessage: null,
+            finishedAt: null,
+          }
+        : task,
+    );
+    return;
+  }
+
   if (isCancellationAccepted || commandError.code === "transfer_cancelled") {
     const didCancel = updateTask(transferId, (task) =>
       isRunningAttempt(task, attempt, runGeneration)
@@ -900,6 +1093,8 @@ function handleTransferFailure({
             status: "cancelled",
             nextRetryAt: null,
             canRetry: false,
+            isPausing: false,
+            isResuming: false,
             isCancelling: false,
             isReleaseBlocked: false,
             errorMessage: null,
@@ -924,6 +1119,8 @@ function handleTransferFailure({
             status: "retrying",
             nextRetryAt: Date.now() + retryDelay,
             canRetry: true,
+            isPausing: false,
+            isResuming: false,
             isCancelling: isCancellationPending,
             errorMessage: commandError.message,
             finishedAt: null,
@@ -942,6 +1139,8 @@ function handleTransferFailure({
           status: "failed",
           nextRetryAt: null,
           canRetry,
+          isPausing: false,
+          isResuming: false,
           isCancelling: canRetry && isCancellationPending,
           errorMessage: commandError.message,
           finishedAt: Date.now(),
@@ -984,9 +1183,16 @@ function isRunningAttempt(
   );
 }
 
+function isRunningGeneration(task: FileTransferTask, runGeneration: number) {
+  return task.status === "running" && task.runGeneration === runGeneration;
+}
+
 function isPendingTransfer(task: FileTransferTask) {
   return (
-    task.status === "queued" || task.status === "running" || task.status === "retrying"
+    task.status === "queued" ||
+    task.status === "running" ||
+    task.status === "retrying" ||
+    task.status === "paused"
   );
 }
 

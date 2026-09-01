@@ -47,7 +47,7 @@ export type AttachRemoteFileTransfersInput = {
   transferIds: string[];
 };
 
-export type RemoteFileTransferCancelStatus = "accepted" | "tooLate" | "notFound";
+export type RemoteFileTransferControlStatus = "accepted" | "tooLate" | "notFound";
 
 export type RemoteFileTransferProgress = {
   transferId: string;

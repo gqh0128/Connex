@@ -25,7 +25,11 @@ export function getQueueEtaSeconds(tasks: FileTransferTask[], now = Date.now()) 
   if (pendingTasks.length === 0) {
     return null;
   }
-  if (pendingTasks.some((task) => task.isCancelling || task.isReleaseBlocked)) {
+  if (
+    pendingTasks.some(
+      (task) => task.isPausing || task.isCancelling || task.isReleaseBlocked,
+    )
+  ) {
     return null;
   }
   if (pendingTasks.some((task) => task.totalBytes === null)) {
@@ -56,7 +60,8 @@ export function getQueueEtaSeconds(tasks: FileTransferTask[], now = Date.now()) 
       }
 
       return {
-        durationSeconds: task.totalBytes / representativeSpeed,
+        durationSeconds:
+          Math.max(0, task.totalBytes - task.transferredBytes) / representativeSpeed,
         queueOrder: task.queueOrder,
         releaseSeconds:
           task.status === "retrying"
@@ -134,6 +139,10 @@ export function sortTransferTasks(tasks: FileTransferTask[]) {
       return left.queueOrder - right.queueOrder;
     }
 
+    if (left.status === "paused") {
+      return (right.startedAt ?? right.createdAt) - (left.startedAt ?? left.createdAt);
+    }
+
     return (right.finishedAt ?? right.createdAt) - (left.finishedAt ?? left.createdAt);
   });
 }
@@ -199,10 +208,12 @@ function statusRank(task: FileTransferTask) {
       return 1;
     case "queued":
       return 2;
-    case "failed":
+    case "paused":
       return 3;
+    case "failed":
+      return 4;
     case "completed":
     case "cancelled":
-      return 4;
+      return 5;
   }
 }

@@ -97,6 +97,7 @@ pub fn run() {
             commands::sftp::attach_remote_file_transfers,
             commands::sftp::upload_remote_file,
             commands::sftp::download_remote_file,
+            commands::sftp::pause_remote_file_transfer,
             commands::sftp::cancel_remote_file_transfer,
         ])
         .build(tauri::generate_context!())

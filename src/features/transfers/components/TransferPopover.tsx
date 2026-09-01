@@ -2,6 +2,8 @@ import {
   ArrowDownToLine,
   ArrowUpDown,
   ArrowUpFromLine,
+  Pause,
+  Play,
   RotateCcw,
   X,
   type LucideIcon,
@@ -29,6 +31,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FileTransfersController } from "@/features/transfers/hooks/useFileTransfers";
 import {
   getQueueEtaSeconds,
@@ -41,16 +44,30 @@ type TransferPopoverProps = {
   controller: FileTransfersController;
 };
 
+const TRANSFER_CATEGORIES = [
+  { id: "running", label: "进行中" },
+  { id: "queued", label: "排队中" },
+  { id: "paused", label: "已暂停" },
+  { id: "failed", label: "失败" },
+  { id: "completed", label: "已完成" },
+] as const;
+
+type TransferCategory = (typeof TRANSFER_CATEGORIES)[number]["id"];
+
 export function TransferPopover({ controller }: TransferPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<TransferCategory>("running");
   const {
     tasks,
     runningCount,
     waitingCount,
+    pausedCount,
     failedCount,
     uploadCount,
     downloadCount,
     concurrencyLimit,
+    pauseTransfer,
+    resumeTransfer,
     cancelTransfer,
     retryTransfer,
     discardTransfer,
@@ -59,19 +76,42 @@ export function TransferPopover({ controller }: TransferPopoverProps) {
   const now = useRetryClock(hasRetryingTask);
   const queueEtaSeconds =
     hasRetryingTask && now === 0 ? null : getQueueEtaSeconds(tasks, now);
-  const pendingCount = runningCount + waitingCount;
-  const liveSummary = formatTriggerLabel(runningCount, waitingCount, failedCount);
+  const activeQueueCount = runningCount + waitingCount;
+  const incompleteCount = activeQueueCount + pausedCount;
+  const liveSummary = formatTriggerLabel(
+    runningCount,
+    waitingCount,
+    pausedCount,
+    failedCount,
+  );
   const queueSummary = formatQueueSummary({
     uploadCount,
     downloadCount,
     runningCount,
+    pausedCount,
     concurrencyLimit,
-    pendingCount,
+    pendingCount: activeQueueCount,
     queueEtaSeconds,
   });
+  const visibleTasks = tasks.filter((task) => isTaskInCategory(task, activeCategory));
+  const emptyState = getTransferEmptyState(activeCategory);
+  const EmptyIcon = emptyState.icon;
+
+  const handleOpenChange = (nextIsOpen: boolean) => {
+    if (nextIsOpen && !isOpen) {
+      setActiveCategory(getDefaultTransferCategory(tasks));
+    }
+    setIsOpen(nextIsOpen);
+  };
+
+  const handleCategoryChange = (value: string) => {
+    if (isTransferCategory(value)) {
+      setActiveCategory(value);
+    }
+  };
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -84,12 +124,12 @@ export function TransferPopover({ controller }: TransferPopoverProps) {
               aria-expanded={isOpen}
             >
               <ArrowUpDown data-icon="inline-start" />
-              {pendingCount > 0 ? (
+              {incompleteCount > 0 ? (
                 <Badge
                   aria-hidden="true"
                   className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[9px] tabular-nums"
                 >
-                  {pendingCount > 99 ? "99+" : pendingCount}
+                  {incompleteCount > 99 ? "99+" : incompleteCount}
                 </Badge>
               ) : failedCount > 0 ? (
                 <Badge
@@ -112,25 +152,14 @@ export function TransferPopover({ controller }: TransferPopoverProps) {
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="flex h-[26rem] w-96 flex-col overflow-hidden p-0"
+        className="flex h-[28rem] w-[32rem] flex-col overflow-hidden p-0"
       >
         <PopoverHeader className="shrink-0 gap-2 px-3 py-3">
           <div className="flex min-w-0 items-center justify-between gap-3">
             <PopoverTitle className="shrink-0">传输任务</PopoverTitle>
-            <div className="flex min-w-0 items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
-              <span className="whitespace-nowrap">{runningCount} 进行</span>
-              <span aria-hidden="true">·</span>
-              <span className="whitespace-nowrap">{waitingCount} 等待</span>
-              <span aria-hidden="true">·</span>
-              <span
-                className={cn(
-                  "whitespace-nowrap",
-                  failedCount > 0 && "text-destructive",
-                )}
-              >
-                {failedCount} 失败
-              </span>
-            </div>
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              共 {tasks.length} 个任务
+            </span>
           </div>
           <PopoverDescription className="truncate" title={queueSummary}>
             {queueSummary}
@@ -138,19 +167,56 @@ export function TransferPopover({ controller }: TransferPopoverProps) {
         </PopoverHeader>
 
         <Separator />
+        <div className="shrink-0 px-3 py-1.5">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="xs"
+            spacing={1}
+            value={activeCategory}
+            onValueChange={handleCategoryChange}
+            className="mx-auto"
+            aria-label="按状态筛选传输任务"
+          >
+            {TRANSFER_CATEGORIES.map((category) => {
+              const count = getTransferCategoryCount(tasks, category.id);
+              return (
+                <ToggleGroupItem
+                  key={category.id}
+                  value={category.id}
+                  className="relative min-w-[4.25rem]"
+                  aria-label={`${category.label}，${count} 个任务`}
+                >
+                  <Badge
+                    variant={activeCategory === category.id ? "default" : "secondary"}
+                    size="counter"
+                    className="pointer-events-none absolute -top-1.5 -left-1.5"
+                    aria-hidden="true"
+                  >
+                    {count > 99 ? "99+" : count}
+                  </Badge>
+                  {category.label}
+                </ToggleGroupItem>
+              );
+            })}
+          </ToggleGroup>
+        </div>
+        <Separator />
         <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-          {tasks.length > 0 ? (
-            <ul aria-label="传输任务列表">
-              {tasks.map((task, index) => (
+          {visibleTasks.length > 0 ? (
+            <ul aria-label={`${getTransferCategoryLabel(activeCategory)}传输任务列表`}>
+              {visibleTasks.map((task, index) => (
                 <li key={task.id}>
                   <TransferRow
                     task={task}
                     now={now}
+                    onPause={() => pauseTransfer(task.id)}
+                    onResume={() => resumeTransfer(task.id)}
                     onCancel={() => cancelTransfer(task.id)}
                     onRetry={() => retryTransfer(task.id)}
                     onDiscard={() => discardTransfer(task.id)}
                   />
-                  {index < tasks.length - 1 ? <Separator /> : null}
+                  {index < visibleTasks.length - 1 ? <Separator /> : null}
                 </li>
               ))}
             </ul>
@@ -158,12 +224,10 @@ export function TransferPopover({ controller }: TransferPopoverProps) {
             <Empty size="compact" className="h-full">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <ArrowUpDown />
+                  <EmptyIcon />
                 </EmptyMedia>
-                <EmptyTitle>暂无传输任务</EmptyTitle>
-                <EmptyDescription>
-                  上传或下载文件后，可以在这里查看进度、速度和结果。
-                </EmptyDescription>
+                <EmptyTitle>{emptyState.title}</EmptyTitle>
+                <EmptyDescription>{emptyState.description}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           )}
@@ -176,18 +240,26 @@ export function TransferPopover({ controller }: TransferPopoverProps) {
 type TransferRowProps = {
   task: FileTransferTask;
   now: number;
+  onPause: () => void;
+  onResume: () => void;
   onCancel: () => void;
   onRetry: () => void;
   onDiscard: () => void;
 };
 
-function TransferRow({ task, now, onCancel, onRetry, onDiscard }: TransferRowProps) {
+function TransferRow({
+  task,
+  now,
+  onPause,
+  onResume,
+  onCancel,
+  onRetry,
+  onDiscard,
+}: TransferRowProps) {
   const Icon: LucideIcon =
     task.direction === "upload" ? ArrowUpFromLine : ArrowDownToLine;
   const percentage = getTransferPercentage(task);
-  const canCancel = ["queued", "running", "retrying"].includes(task.status);
   const directionLabel = task.direction === "upload" ? "上传" : "下载";
-  const cancelActionLabel = task.isReleaseBlocked ? "重新释放" : "取消";
   const status = getTransferStatus(task);
   const detail = formatTransferDetail(task, now);
 
@@ -217,19 +289,9 @@ function TransferRow({ task, now, onCancel, onRetry, onDiscard }: TransferRowPro
             {status.label}
           </span>
         </div>
-        <div className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-muted-foreground">
-          <span
-            className="max-w-[7.5rem] shrink-0 truncate"
-            title={task.connectionName}
-          >
-            {task.connectionName}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span className="min-w-0 flex-1 truncate tabular-nums" title={detail}>
-            {detail}
-          </span>
-        </div>
-        {percentage !== null && task.status === "running" ? (
+        <TransferMetadata task={task} detail={detail} />
+        {percentage !== null &&
+        (task.status === "running" || task.status === "paused") ? (
           <div className="relative h-4">
             <Progress
               className="h-4"
@@ -255,68 +317,261 @@ function TransferRow({ task, now, onCancel, onRetry, onDiscard }: TransferRowPro
         ) : null}
       </div>
       <div className="flex w-12 items-center justify-end">
-        {canCancel ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`${cancelActionLabel}${directionLabel} ${task.fileName}`}
-                disabled={task.isCancelling}
-                onClick={onCancel}
-              >
-                <X data-icon="inline-start" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {cancelActionLabel}
-              {directionLabel}
-            </TooltipContent>
-          </Tooltip>
-        ) : task.status === "failed" && task.canRetry ? (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`重试${directionLabel} ${task.fileName}`}
-                  disabled={task.isCancelling}
-                  onClick={onRetry}
-                >
-                  <RotateCcw data-icon="inline-start" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>重试{directionLabel}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`放弃重试${directionLabel} ${task.fileName}`}
-                  disabled={task.isCancelling}
-                  onClick={onDiscard}
-                >
-                  <X data-icon="inline-start" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>放弃重试并释放目标</TooltipContent>
-            </Tooltip>
-          </>
-        ) : null}
+        <TransferActions
+          task={task}
+          directionLabel={directionLabel}
+          onPause={onPause}
+          onResume={onResume}
+          onCancel={onCancel}
+          onRetry={onRetry}
+          onDiscard={onDiscard}
+        />
       </div>
     </div>
   );
+}
+
+type TransferActionsProps = {
+  task: FileTransferTask;
+  directionLabel: string;
+  onPause: () => void;
+  onResume: () => void;
+  onCancel: () => void;
+  onRetry: () => void;
+  onDiscard: () => void;
+};
+
+function TransferActions({
+  task,
+  directionLabel,
+  onPause,
+  onResume,
+  onCancel,
+  onRetry,
+  onDiscard,
+}: TransferActionsProps) {
+  const canPause = ["queued", "running", "retrying"].includes(task.status);
+  const canCancel = canPause || task.status === "paused";
+  const cancelActionLabel = task.isReleaseBlocked ? "重新释放" : "取消";
+  const isControlDisabled = task.isCancelling || task.isPausing;
+
+  if (canCancel) {
+    return (
+      <>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`${task.status === "paused" ? "继续" : "暂停"}${directionLabel} ${task.fileName}`}
+              disabled={isControlDisabled}
+              onClick={task.status === "paused" ? onResume : onPause}
+            >
+              {task.status === "paused" ? (
+                <Play data-icon="inline-start" />
+              ) : (
+                <Pause data-icon="inline-start" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {task.status === "paused" ? "继续" : "暂停"}
+            {directionLabel}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`${cancelActionLabel}${directionLabel} ${task.fileName}`}
+              disabled={isControlDisabled}
+              onClick={onCancel}
+            >
+              <X data-icon="inline-start" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {cancelActionLabel}
+            {directionLabel}
+          </TooltipContent>
+        </Tooltip>
+      </>
+    );
+  }
+
+  if (task.status !== "failed" || !task.canRetry) {
+    return null;
+  }
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`重试${directionLabel} ${task.fileName}`}
+            disabled={task.isCancelling}
+            onClick={onRetry}
+          >
+            <RotateCcw data-icon="inline-start" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>重试{directionLabel}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`放弃重试${directionLabel} ${task.fileName}`}
+            disabled={task.isCancelling}
+            onClick={onDiscard}
+          >
+            <X data-icon="inline-start" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>放弃重试并释放目标</TooltipContent>
+      </Tooltip>
+    </>
+  );
+}
+
+function TransferMetadata({
+  task,
+  detail,
+}: {
+  task: FileTransferTask;
+  detail: string;
+}) {
+  if (task.status === "running" && task.totalBytes !== null) {
+    const speed =
+      task.bytesPerSecond > 0 ? `${formatBytes(task.bytesPerSecond)}/s` : "估算中";
+    const etaSeconds = getTransferEtaSeconds(task);
+    const eta = etaSeconds === null ? "剩余估算中" : `剩 ${formatDuration(etaSeconds)}`;
+
+    return (
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 text-[11px] leading-4 text-muted-foreground">
+        <span className="truncate" title={task.connectionName}>
+          {task.connectionName}
+        </span>
+        <span className="whitespace-nowrap tabular-nums">
+          {formatBytes(task.transferredBytes)} / {formatBytes(task.totalBytes)}
+        </span>
+        <span className="whitespace-nowrap tabular-nums">{speed}</span>
+        <span className="whitespace-nowrap text-right tabular-nums">{eta}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-muted-foreground">
+      <span className="max-w-[10rem] shrink-0 truncate" title={task.connectionName}>
+        {task.connectionName}
+      </span>
+      <span aria-hidden="true">·</span>
+      <span className="min-w-0 flex-1 truncate tabular-nums" title={detail}>
+        {detail}
+      </span>
+    </div>
+  );
+}
+
+function isTransferCategory(value: string): value is TransferCategory {
+  return TRANSFER_CATEGORIES.some((category) => category.id === value);
+}
+
+function isTaskInCategory(task: FileTransferTask, category: TransferCategory) {
+  switch (category) {
+    case "running":
+      return task.status === "running";
+    case "queued":
+      return task.status === "queued" || task.status === "retrying";
+    case "paused":
+      return task.status === "paused";
+    case "failed":
+      return task.status === "failed";
+    case "completed":
+      return task.status === "completed" || task.status === "cancelled";
+  }
+}
+
+function getTransferCategoryCount(
+  tasks: FileTransferTask[],
+  category: TransferCategory,
+) {
+  return tasks.filter((task) => isTaskInCategory(task, category)).length;
+}
+
+function getDefaultTransferCategory(tasks: FileTransferTask[]): TransferCategory {
+  const priority: TransferCategory[] = [
+    "running",
+    "queued",
+    "paused",
+    "failed",
+    "completed",
+  ];
+  return (
+    priority.find((category) => getTransferCategoryCount(tasks, category) > 0) ??
+    "running"
+  );
+}
+
+function getTransferCategoryLabel(category: TransferCategory) {
+  return TRANSFER_CATEGORIES.find((item) => item.id === category)?.label ?? "传输";
+}
+
+function getTransferEmptyState(category: TransferCategory): {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+} {
+  switch (category) {
+    case "running":
+      return {
+        icon: ArrowUpDown,
+        title: "暂无进行中的任务",
+        description: "新传输开始后会在这里实时显示速度和剩余时间。",
+      };
+    case "queued":
+      return {
+        icon: ArrowUpDown,
+        title: "暂无排队任务",
+        description: "达到并发上限后，等待中的任务会显示在这里。",
+      };
+    case "paused":
+      return {
+        icon: Pause,
+        title: "暂无已暂停任务",
+        description: "暂停任务后，可以从当前断点继续上传或下载。",
+      };
+    case "failed":
+      return {
+        icon: ArrowUpDown,
+        title: "暂无失败任务",
+        description: "最终失败且可以恢复的任务会在这里提供重试操作。",
+      };
+    case "completed":
+      return {
+        icon: ArrowUpDown,
+        title: "暂无已完成任务",
+        description: "已经完成或取消的传输记录会显示在这里。",
+      };
+  }
 }
 
 function getTransferStatus(task: FileTransferTask) {
   const directionLabel = task.direction === "upload" ? "上传" : "下载";
   if (task.isCancelling) {
     return { label: "取消中", isDestructive: false };
+  }
+  if (task.isPausing) {
+    return { label: "暂停中", isDestructive: false };
   }
   if (task.isReleaseBlocked) {
     return { label: "待释放", isDestructive: true };
@@ -332,6 +587,8 @@ function getTransferStatus(task: FileTransferTask) {
         label: `重试 ${task.attempt + 1}/${task.maxAttempts}`,
         isDestructive: false,
       };
+    case "paused":
+      return { label: "已暂停", isDestructive: false };
     case "completed":
       return { label: "完成", isDestructive: false };
     case "cancelled":
@@ -359,6 +616,12 @@ function formatTransferDetail(task: FileTransferTask, now: number) {
     );
     return `${formatDuration(waitSeconds)}后重试`;
   }
+  if (task.status === "paused") {
+    const total = task.totalBytes;
+    return total === null
+      ? `已暂停${action}`
+      : `${formatBytes(task.transferredBytes)} / ${formatBytes(total)} · 已暂停`;
+  }
   if (task.status === "failed") {
     return `已${action} ${formatBytes(task.transferredBytes)}`;
   }
@@ -383,6 +646,7 @@ type QueueSummaryInput = {
   uploadCount: number;
   downloadCount: number;
   runningCount: number;
+  pausedCount: number;
   concurrencyLimit: number;
   pendingCount: number;
   queueEtaSeconds: number | null;
@@ -392,20 +656,24 @@ function formatQueueSummary({
   uploadCount,
   downloadCount,
   runningCount,
+  pausedCount,
   concurrencyLimit,
   pendingCount,
   queueEtaSeconds,
 }: QueueSummaryInput) {
   const counts = `上传 ${uploadCount} · 下载 ${downloadCount}`;
   if (pendingCount === 0) {
-    return `${counts} · 暂无进行中的任务`;
+    return pausedCount > 0
+      ? `${counts} · 已暂停 ${pausedCount}`
+      : `${counts} · 暂无进行中的任务`;
   }
 
   const eta =
     queueEtaSeconds === null
       ? "队列剩余估算中"
       : `队列剩约 ${formatDuration(queueEtaSeconds)}`;
-  return `${counts} · 并发 ${runningCount}/${concurrencyLimit} · ${eta}`;
+  const paused = pausedCount > 0 ? ` · 暂停 ${pausedCount}` : "";
+  return `${counts} · 并发 ${runningCount}/${concurrencyLimit}${paused} · ${eta}`;
 }
 
 function getTransferPercentage(task: FileTransferTask) {
@@ -425,9 +693,10 @@ function getTransferPercentage(task: FileTransferTask) {
 function formatTriggerLabel(
   runningCount: number,
   waitingCount: number,
+  pausedCount: number,
   failedCount: number,
 ) {
-  return `传输任务，${runningCount} 个进行中，${waitingCount} 个等待，${failedCount} 个失败`;
+  return `传输任务，${runningCount} 个进行中，${waitingCount} 个等待，${pausedCount} 个暂停，${failedCount} 个失败`;
 }
 
 function formatDuration(seconds: number) {

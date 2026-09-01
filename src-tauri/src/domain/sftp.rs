@@ -2,9 +2,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 const TRANSFER_PHASE_RUNNING: u8 = 0;
-const TRANSFER_PHASE_CANCEL_REQUESTED: u8 = 1;
-const TRANSFER_PHASE_COMMITTING: u8 = 2;
-const TRANSFER_PHASE_COMPLETED: u8 = 3;
+const TRANSFER_PHASE_PAUSE_REQUESTED: u8 = 1;
+const TRANSFER_PHASE_CANCEL_REQUESTED: u8 = 2;
+const TRANSFER_PHASE_COMMITTING: u8 = 3;
+const TRANSFER_PHASE_COMPLETED: u8 = 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RemoteFileKind {
@@ -69,10 +70,24 @@ pub struct RemoteDownloadResult {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RemoteFileTransferCancelStatus {
+pub enum RemoteFileTransferControlStatus {
     Accepted,
     TooLate,
     NotFound,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RemoteFileTransferControl {
+    Running,
+    Pause,
+    Cancel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RemoteFileTransferFinish {
+    Completed,
+    Paused,
+    Cancelled,
 }
 
 #[derive(Debug)]
@@ -87,7 +102,7 @@ impl RemoteFileTransferLifecycle {
         }
     }
 
-    pub fn request_cancellation(&self) -> RemoteFileTransferCancelStatus {
+    pub fn request_pause(&self) -> RemoteFileTransferControlStatus {
         loop {
             match self.phase.load(Ordering::Acquire) {
                 TRANSFER_PHASE_RUNNING => {
@@ -95,22 +110,59 @@ impl RemoteFileTransferLifecycle {
                         .phase
                         .compare_exchange(
                             TRANSFER_PHASE_RUNNING,
+                            TRANSFER_PHASE_PAUSE_REQUESTED,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
+                    {
+                        return RemoteFileTransferControlStatus::Accepted;
+                    }
+                }
+                TRANSFER_PHASE_PAUSE_REQUESTED => {
+                    return RemoteFileTransferControlStatus::Accepted;
+                }
+                TRANSFER_PHASE_CANCEL_REQUESTED
+                | TRANSFER_PHASE_COMMITTING
+                | TRANSFER_PHASE_COMPLETED => {
+                    return RemoteFileTransferControlStatus::TooLate;
+                }
+                _ => return RemoteFileTransferControlStatus::TooLate,
+            }
+        }
+    }
+
+    pub fn request_cancellation(&self) -> RemoteFileTransferControlStatus {
+        loop {
+            match self.phase.load(Ordering::Acquire) {
+                TRANSFER_PHASE_RUNNING | TRANSFER_PHASE_PAUSE_REQUESTED => {
+                    let phase = self.phase.load(Ordering::Acquire);
+                    if !matches!(
+                        phase,
+                        TRANSFER_PHASE_RUNNING | TRANSFER_PHASE_PAUSE_REQUESTED
+                    ) {
+                        continue;
+                    }
+                    if self
+                        .phase
+                        .compare_exchange(
+                            phase,
                             TRANSFER_PHASE_CANCEL_REQUESTED,
                             Ordering::AcqRel,
                             Ordering::Acquire,
                         )
                         .is_ok()
                     {
-                        return RemoteFileTransferCancelStatus::Accepted;
+                        return RemoteFileTransferControlStatus::Accepted;
                     }
                 }
                 TRANSFER_PHASE_CANCEL_REQUESTED => {
-                    return RemoteFileTransferCancelStatus::Accepted;
+                    return RemoteFileTransferControlStatus::Accepted;
                 }
                 TRANSFER_PHASE_COMMITTING | TRANSFER_PHASE_COMPLETED => {
-                    return RemoteFileTransferCancelStatus::TooLate;
+                    return RemoteFileTransferControlStatus::TooLate;
                 }
-                _ => return RemoteFileTransferCancelStatus::TooLate,
+                _ => return RemoteFileTransferControlStatus::TooLate,
             }
         }
     }
@@ -126,13 +178,17 @@ impl RemoteFileTransferLifecycle {
             .is_ok()
     }
 
-    pub fn finish(&self) -> bool {
+    pub fn finish(&self) -> RemoteFileTransferFinish {
         loop {
             let phase = self.phase.load(Ordering::Acquire);
-            let was_cancelled = phase == TRANSFER_PHASE_CANCEL_REQUESTED;
             if phase == TRANSFER_PHASE_COMPLETED {
-                return false;
+                return RemoteFileTransferFinish::Completed;
             }
+            let finish = match phase {
+                TRANSFER_PHASE_PAUSE_REQUESTED => RemoteFileTransferFinish::Paused,
+                TRANSFER_PHASE_CANCEL_REQUESTED => RemoteFileTransferFinish::Cancelled,
+                _ => RemoteFileTransferFinish::Completed,
+            };
             if self
                 .phase
                 .compare_exchange(
@@ -143,7 +199,7 @@ impl RemoteFileTransferLifecycle {
                 )
                 .is_ok()
             {
-                return was_cancelled;
+                return finish;
             }
         }
     }

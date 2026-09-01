@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::sftp::{
     LocalDownloadTargetSelection, LocalUploadFileSelection, RemoteDirectory, RemoteDownloadResult,
-    RemoteFileEntry, RemoteFileKind, RemoteFileTransferCancelStatus, RemoteFileTransferProgress,
+    RemoteFileEntry, RemoteFileKind, RemoteFileTransferControlStatus, RemoteFileTransferProgress,
     RemoteUploadResult,
 };
 
@@ -176,18 +176,18 @@ pub struct RemoteDownloadResultDto {
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum RemoteFileTransferCancelStatusDto {
+pub enum RemoteFileTransferControlStatusDto {
     Accepted,
     TooLate,
     NotFound,
 }
 
-impl From<RemoteFileTransferCancelStatus> for RemoteFileTransferCancelStatusDto {
-    fn from(status: RemoteFileTransferCancelStatus) -> Self {
+impl From<RemoteFileTransferControlStatus> for RemoteFileTransferControlStatusDto {
+    fn from(status: RemoteFileTransferControlStatus) -> Self {
         match status {
-            RemoteFileTransferCancelStatus::Accepted => Self::Accepted,
-            RemoteFileTransferCancelStatus::TooLate => Self::TooLate,
-            RemoteFileTransferCancelStatus::NotFound => Self::NotFound,
+            RemoteFileTransferControlStatus::Accepted => Self::Accepted,
+            RemoteFileTransferControlStatus::TooLate => Self::TooLate,
+            RemoteFileTransferControlStatus::NotFound => Self::NotFound,
         }
     }
 }

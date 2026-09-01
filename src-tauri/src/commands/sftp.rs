@@ -7,7 +7,7 @@ use crate::models::error::CommandError;
 use crate::models::sftp::{
     AttachRemoteFileTransfersInput, DownloadRemoteFileInput, LocalDownloadTargetSelectionDto,
     LocalUploadFileSelectionDto, RemoteDirectoryDto, RemoteDownloadResultDto,
-    RemoteFileTransferCancelStatusDto, RemoteFileTransferProgressDto, RemoteUploadResultDto,
+    RemoteFileTransferControlStatusDto, RemoteFileTransferProgressDto, RemoteUploadResultDto,
     SelectLocalDownloadTargetInput, SelectLocalUploadFilesInput, UploadRemoteFileInput,
 };
 
@@ -153,9 +153,21 @@ pub async fn download_remote_file(
 pub async fn cancel_remote_file_transfer(
     transfer_id: String,
     sessions: State<'_, SshSessionManager>,
-) -> Result<RemoteFileTransferCancelStatusDto, CommandError> {
+) -> Result<RemoteFileTransferControlStatusDto, CommandError> {
     sessions
         .cancel_remote_file_transfer(&transfer_id)
+        .await
+        .map(Into::into)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn pause_remote_file_transfer(
+    transfer_id: String,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<RemoteFileTransferControlStatusDto, CommandError> {
+    sessions
+        .pause_remote_file_transfer(&transfer_id)
         .await
         .map(Into::into)
         .map_err(Into::into)

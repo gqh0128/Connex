@@ -1,7 +1,7 @@
 export type FileTransferDirection = "upload" | "download";
 
 export type FileTransferStatus =
-  "queued" | "running" | "retrying" | "completed" | "cancelled" | "failed";
+  "queued" | "running" | "retrying" | "paused" | "completed" | "cancelled" | "failed";
 
 export type FileTransferTask = {
   id: string;
@@ -17,6 +17,8 @@ export type FileTransferTask = {
   maxAttempts: number;
   nextRetryAt: number | null;
   canRetry: boolean;
+  isPausing: boolean;
+  isResuming: boolean;
   isCancelling: boolean;
   isReleaseBlocked: boolean;
   errorMessage: string | null;

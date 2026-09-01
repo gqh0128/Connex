@@ -16,13 +16,13 @@ use crate::domain::sessions::{
 };
 use crate::domain::sftp::{
     LocalDownloadTargetSelection, LocalUploadFileSelection, RemoteDirectory, RemoteDownloadResult,
-    RemoteFileTransferCancelStatus, RemoteFileTransferLifecycle, RemoteFileTransferProgress,
-    RemoteUploadResult,
+    RemoteFileTransferControl, RemoteFileTransferControlStatus, RemoteFileTransferFinish,
+    RemoteFileTransferLifecycle, RemoteFileTransferProgress, RemoteUploadResult,
 };
 use crate::infrastructure::sftp::{
     AuthorizedLocalDownloadTarget, AuthorizedLocalUploadFile, AuthorizedRemoteDownloadFile,
     RemoteFileError, RemoteFileSessionState, RemoteFileTransferRuntime, SharedRemoteFileSession,
-    authorize_local_download_target, authorize_local_upload_file,
+    authorize_local_download_target, authorize_local_upload_file, cleanup_local_download_attempt,
 };
 use crate::infrastructure::ssh::{
     SharedSessionSnapshot, SshConnector, SshSessionEnd, SshSessionRuntime, SshTransportError,
@@ -35,6 +35,7 @@ const MAX_INPUT_BYTES: usize = 64 * 1024;
 const MAX_ACTIVE_TRANSFERS: usize = 3;
 const MAX_TRANSFER_ATTACH_BATCH: usize = 1_024;
 const LOCAL_FILE_CAPABILITY_TTL: Duration = Duration::from_secs(30 * 60);
+const TRANSFER_ATTEMPT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const TRANSFER_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
@@ -292,6 +293,7 @@ impl SshSessionManager {
                     is_attached: false,
                     is_active: false,
                     is_revoked: false,
+                    attempt_id: None,
                     kind: LocalFileCapabilityKind::Upload {
                         remote_directory: remote_directory.clone(),
                         file,
@@ -351,6 +353,7 @@ impl SshSessionManager {
                 is_attached: false,
                 is_active: false,
                 is_revoked: false,
+                attempt_id: None,
                 kind: LocalFileCapabilityKind::Download { source, target },
             },
         );
@@ -408,14 +411,15 @@ impl SshSessionManager {
             let result = manager
                 .execute_upload_transfer(
                     &task_transfer_id,
-                    registered.cancellation,
+                    registered.control,
                     registered.lifecycle.clone(),
                     progress,
                 )
                 .await;
-            let was_cancelled = registered.lifecycle.finish();
+            let finish = registered.lifecycle.finish();
+            let result = finalize_transfer_result(result, finish);
             manager
-                .finish_local_file_attempt(&task_transfer_id, &result, was_cancelled)
+                .finish_local_file_attempt(&task_transfer_id, &result)
                 .await;
             let _completion_result = registered.completion.send(true);
             manager.transfers.lock().await.remove(&task_transfer_id);
@@ -444,14 +448,15 @@ impl SshSessionManager {
             let result = manager
                 .execute_download_transfer(
                     &task_transfer_id,
-                    registered.cancellation,
+                    registered.control,
                     registered.lifecycle.clone(),
                     progress,
                 )
                 .await;
-            let was_cancelled = registered.lifecycle.finish();
+            let finish = registered.lifecycle.finish();
+            let result = finalize_transfer_result(result, finish);
             manager
-                .finish_local_file_attempt(&task_transfer_id, &result, was_cancelled)
+                .finish_local_file_attempt(&task_transfer_id, &result)
                 .await;
             let _completion_result = registered.completion.send(true);
             manager.transfers.lock().await.remove(&task_transfer_id);
@@ -466,34 +471,50 @@ impl SshSessionManager {
     pub async fn cancel_remote_file_transfer(
         &self,
         transfer_id: &str,
-    ) -> Result<RemoteFileTransferCancelStatus, SessionManagerError> {
+    ) -> Result<RemoteFileTransferControlStatus, SessionManagerError> {
         let transfer_id = canonical_transfer_id(transfer_id)?;
         let transfer = self
             .transfers
             .lock()
             .await
             .get(&transfer_id)
-            .map(|control| (control.lifecycle.clone(), control.cancellation.clone()));
-        if let Some((lifecycle, cancellation)) = transfer {
+            .map(|control| (control.lifecycle.clone(), control.control.clone()));
+        if let Some((lifecycle, control)) = transfer {
             let status = lifecycle.request_cancellation();
-            if status == RemoteFileTransferCancelStatus::Accepted {
-                let _send_result = cancellation.send(true);
+            if status == RemoteFileTransferControlStatus::Accepted {
+                let _send_result = control.send(RemoteFileTransferControl::Cancel);
             }
             return Ok(status);
         }
 
-        let removed = self
-            .local_files
+        let removed = self.remove_idle_capability(&transfer_id).await;
+        if let Some(capability) = removed {
+            self.cleanup_transfer_attempt(&capability).await;
+            Ok(RemoteFileTransferControlStatus::Accepted)
+        } else {
+            Ok(RemoteFileTransferControlStatus::NotFound)
+        }
+    }
+
+    pub async fn pause_remote_file_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<RemoteFileTransferControlStatus, SessionManagerError> {
+        let transfer_id = canonical_transfer_id(transfer_id)?;
+        let transfer = self
+            .transfers
             .lock()
             .await
-            .capabilities
-            .remove(&transfer_id)
-            .is_some();
-        Ok(if removed {
-            RemoteFileTransferCancelStatus::Accepted
-        } else {
-            RemoteFileTransferCancelStatus::NotFound
-        })
+            .get(&transfer_id)
+            .map(|control| (control.lifecycle.clone(), control.control.clone()));
+        let Some((lifecycle, control)) = transfer else {
+            return Ok(RemoteFileTransferControlStatus::NotFound);
+        };
+        let status = lifecycle.request_pause();
+        if status == RemoteFileTransferControlStatus::Accepted {
+            let _send_result = control.send(RemoteFileTransferControl::Pause);
+        }
+        Ok(status)
     }
 
     pub async fn close(&self, session_id: &str) -> Result<(), SessionManagerError> {
@@ -591,23 +612,22 @@ impl SshSessionManager {
     async fn execute_upload_transfer(
         &self,
         transfer_id: &str,
-        mut cancellation: watch::Receiver<bool>,
+        mut control: watch::Receiver<RemoteFileTransferControl>,
         lifecycle: Arc<RemoteFileTransferLifecycle>,
         progress: mpsc::Sender<RemoteFileTransferProgress>,
     ) -> Result<RemoteUploadResult, SessionManagerError> {
         let claimed = self.claim_upload_capability(transfer_id).await?;
         let remote_files = self
-            .remote_file_session_for_transfer(&claimed.session_id, &mut cancellation)
+            .remote_file_session_for_transfer(&claimed.session_id, &mut control)
             .await?;
-        let attempt_id = Uuid::new_v4().to_string();
         remote_files
             .upload_file(
                 &claimed.file,
                 &claimed.remote_directory,
                 RemoteFileTransferRuntime {
                     transfer_id: transfer_id.to_owned(),
-                    attempt_id,
-                    cancellation,
+                    attempt_id: claimed.attempt_id,
+                    control,
                     lifecycle,
                     progress,
                 },
@@ -619,23 +639,22 @@ impl SshSessionManager {
     async fn execute_download_transfer(
         &self,
         transfer_id: &str,
-        mut cancellation: watch::Receiver<bool>,
+        mut control: watch::Receiver<RemoteFileTransferControl>,
         lifecycle: Arc<RemoteFileTransferLifecycle>,
         progress: mpsc::Sender<RemoteFileTransferProgress>,
     ) -> Result<RemoteDownloadResult, SessionManagerError> {
         let claimed = self.claim_download_capability(transfer_id).await?;
         let remote_files = self
-            .remote_file_session_for_transfer(&claimed.session_id, &mut cancellation)
+            .remote_file_session_for_transfer(&claimed.session_id, &mut control)
             .await?;
-        let attempt_id = Uuid::new_v4().to_string();
         remote_files
             .download_file(
                 &claimed.source,
                 &claimed.target,
                 RemoteFileTransferRuntime {
                     transfer_id: transfer_id.to_owned(),
-                    attempt_id,
-                    cancellation,
+                    attempt_id: claimed.attempt_id,
+                    control,
                     lifecycle,
                     progress,
                 },
@@ -668,6 +687,10 @@ impl SshSessionManager {
             session_id: capability.session_id.clone(),
             remote_directory: remote_directory.clone(),
             file: file.clone(),
+            attempt_id: capability
+                .attempt_id
+                .get_or_insert_with(|| Uuid::new_v4().to_string())
+                .clone(),
         };
         capability.is_active = true;
         Ok(claimed)
@@ -679,7 +702,7 @@ impl SshSessionManager {
     ) -> Result<ClaimedDownloadCapability, SessionManagerError> {
         let mut local_files = self.local_files.lock().await;
         local_files.purge_expired();
-        let (session_id, source, target) = {
+        let (session_id, source, target, attempt_id) = {
             let capability = local_files
                 .capabilities
                 .get(transfer_id)
@@ -694,6 +717,10 @@ impl SshSessionManager {
                 capability.session_id.clone(),
                 source.clone(),
                 target.clone(),
+                capability
+                    .attempt_id
+                    .clone()
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
             )
         };
         if !local_files
@@ -707,10 +734,12 @@ impl SshSessionManager {
             .get_mut(transfer_id)
             .ok_or(SessionManagerError::LocalFileCapabilityUnavailable)?;
         capability.is_active = true;
+        capability.attempt_id = Some(attempt_id.clone());
         Ok(ClaimedDownloadCapability {
             session_id,
             source,
             target,
+            attempt_id,
         })
     }
 
@@ -718,7 +747,6 @@ impl SshSessionManager {
         &self,
         transfer_id: &str,
         result: &Result<T, SessionManagerError>,
-        was_cancelled: bool,
     ) {
         let mut local_files = self.local_files.lock().await;
         let Some(capability) = local_files.capabilities.get(transfer_id) else {
@@ -728,19 +756,28 @@ impl SshSessionManager {
             LocalFileCapabilityKind::Download { target, .. } => Some(target.path().to_path_buf()),
             LocalFileCapabilityKind::Upload { .. } => None,
         };
-        let should_retain = !was_cancelled
-            && !capability.is_revoked
-            && matches!(result, Err(error) if error.is_retryable_transfer())
+        let is_paused = matches!(result, Err(SessionManagerError::TransferPaused));
+        let should_retain = !capability.is_revoked
+            && (is_paused || matches!(result, Err(error) if error.is_retryable_transfer()))
             && (capability.is_attached || capability.expires_at > Instant::now());
+        let cleanup =
+            (result.is_err() && (!is_paused || !should_retain)).then(|| capability.clone());
         if let Some(target) = download_target {
             local_files.active_download_targets.remove(&target);
         }
         if should_retain {
             if let Some(capability) = local_files.capabilities.get_mut(transfer_id) {
                 capability.is_active = false;
+                if !is_paused {
+                    capability.attempt_id = None;
+                }
             }
         } else {
             local_files.capabilities.remove(transfer_id);
+        }
+        drop(local_files);
+        if let Some(capability) = cleanup {
+            self.cleanup_transfer_attempt(&capability).await;
         }
     }
 
@@ -783,7 +820,7 @@ impl SshSessionManager {
         transfer_id: &str,
         session_id: &str,
     ) -> Result<RegisteredTransfer, SessionManagerError> {
-        let (cancellation_sender, cancellation_receiver) = watch::channel(false);
+        let (control_sender, control_receiver) = watch::channel(RemoteFileTransferControl::Running);
         let (completion_sender, completion_receiver) = watch::channel(false);
         let lifecycle = Arc::new(RemoteFileTransferLifecycle::new());
         let mut transfers = self.transfers.lock().await;
@@ -800,13 +837,13 @@ impl SshSessionManager {
             transfer_id.to_owned(),
             TransferControl {
                 session_id: session_id.to_owned(),
-                cancellation: cancellation_sender,
+                control: control_sender,
                 lifecycle: lifecycle.clone(),
                 completion: completion_receiver,
             },
         );
         Ok(RegisteredTransfer {
-            cancellation: cancellation_receiver,
+            control: control_receiver,
             lifecycle,
             completion: completion_sender,
         })
@@ -815,17 +852,27 @@ impl SshSessionManager {
     async fn remote_file_session_for_transfer(
         &self,
         session_id: &str,
-        cancellation: &mut watch::Receiver<bool>,
+        control: &mut watch::Receiver<RemoteFileTransferControl>,
     ) -> Result<crate::infrastructure::sftp::RemoteFileSession, SessionManagerError> {
-        if *cancellation.borrow() {
-            return Err(SessionManagerError::TransferCancelled);
+        match *control.borrow() {
+            RemoteFileTransferControl::Running => {}
+            RemoteFileTransferControl::Pause => {
+                return Err(SessionManagerError::TransferPaused);
+            }
+            RemoteFileTransferControl::Cancel => {
+                return Err(SessionManagerError::TransferCancelled);
+            }
         }
 
         tokio::select! {
             biased;
-            changed = cancellation.changed() => {
+            changed = control.changed() => {
                 match changed {
-                    Ok(()) if *cancellation.borrow() => Err(SessionManagerError::TransferCancelled),
+                    Ok(()) => match *control.borrow() {
+                        RemoteFileTransferControl::Running => Err(SessionManagerError::RemoteFilesUnavailable),
+                        RemoteFileTransferControl::Pause => Err(SessionManagerError::TransferPaused),
+                        RemoteFileTransferControl::Cancel => Err(SessionManagerError::TransferCancelled),
+                    },
                     _ => Err(SessionManagerError::RemoteFilesUnavailable),
                 }
             }
@@ -840,9 +887,9 @@ impl SshSessionManager {
             for transfer in transfers.values() {
                 if transfer.session_id == session_id {
                     if transfer.lifecycle.request_cancellation()
-                        == RemoteFileTransferCancelStatus::Accepted
+                        == RemoteFileTransferControlStatus::Accepted
                     {
-                        let _send_result = transfer.cancellation.send(true);
+                        let _send_result = transfer.control.send(RemoteFileTransferControl::Cancel);
                     }
                     completions.push(transfer.completion.clone());
                 }
@@ -871,24 +918,36 @@ impl SshSessionManager {
 
     async fn revoke_capabilities_for_session(&self, session_id: &str) {
         let mut local_files = self.local_files.lock().await;
-        let mut removed_download_targets = Vec::new();
-        local_files.capabilities.retain(|_, capability| {
-            if capability.session_id != session_id {
-                return true;
+        let transfer_ids = local_files
+            .capabilities
+            .iter()
+            .filter(|(_, capability)| capability.session_id == session_id)
+            .map(|(transfer_id, _)| transfer_id.clone())
+            .collect::<Vec<_>>();
+        let mut removed = Vec::new();
+        for transfer_id in transfer_ids {
+            let is_active = local_files
+                .capabilities
+                .get(&transfer_id)
+                .is_some_and(|capability| capability.is_active);
+            if is_active {
+                if let Some(capability) = local_files.capabilities.get_mut(&transfer_id) {
+                    // Preserve an inaccessible tombstone and its destination reservation until
+                    // an attempt already beyond the bounded shutdown wait actually finishes.
+                    capability.is_revoked = true;
+                }
+                continue;
             }
-            if capability.is_active {
-                // Preserve an inaccessible tombstone and its destination reservation until
-                // an attempt already beyond the bounded shutdown wait actually finishes.
-                capability.is_revoked = true;
-                return true;
+            if let Some(capability) = local_files.capabilities.remove(&transfer_id) {
+                if let LocalFileCapabilityKind::Download { target, .. } = &capability.kind {
+                    local_files.active_download_targets.remove(target.path());
+                }
+                removed.push(capability);
             }
-            if let LocalFileCapabilityKind::Download { target, .. } = &capability.kind {
-                removed_download_targets.push(target.path().to_path_buf());
-            }
-            false
-        });
-        for target in removed_download_targets {
-            local_files.active_download_targets.remove(&target);
+        }
+        drop(local_files);
+        for capability in removed {
+            self.cleanup_transfer_attempt(&capability).await;
         }
     }
 
@@ -900,6 +959,48 @@ impl SshSessionManager {
             };
             if let LocalFileCapabilityKind::Download { target, .. } = capability.kind {
                 local_files.active_download_targets.remove(target.path());
+            }
+        }
+    }
+
+    async fn remove_idle_capability(&self, transfer_id: &str) -> Option<LocalFileCapability> {
+        let mut local_files = self.local_files.lock().await;
+        if local_files
+            .capabilities
+            .get(transfer_id)
+            .is_some_and(|capability| capability.is_active)
+        {
+            return None;
+        }
+        let capability = local_files.capabilities.remove(transfer_id)?;
+        if let LocalFileCapabilityKind::Download { target, .. } = &capability.kind {
+            local_files.active_download_targets.remove(target.path());
+        }
+        Some(capability)
+    }
+
+    async fn cleanup_transfer_attempt(&self, capability: &LocalFileCapability) {
+        let Some(attempt_id) = capability.attempt_id.as_deref() else {
+            return;
+        };
+        match &capability.kind {
+            LocalFileCapabilityKind::Upload {
+                remote_directory, ..
+            } => {
+                let Ok(entry) = self.entry(&capability.session_id).await else {
+                    return;
+                };
+                let remote_files = entry.remote_files.read().await.clone();
+                if let RemoteFileSessionState::Ready(remote_files) = remote_files {
+                    let _cleanup_result = tokio::time::timeout(
+                        TRANSFER_ATTEMPT_CLEANUP_TIMEOUT,
+                        remote_files.cleanup_upload_attempt(remote_directory, attempt_id),
+                    )
+                    .await;
+                }
+            }
+            LocalFileCapabilityKind::Download { target, .. } => {
+                cleanup_local_download_attempt(attempt_id, target).await;
             }
         }
     }
@@ -1059,12 +1160,14 @@ impl LocalFileCapabilityStore {
     }
 }
 
+#[derive(Clone)]
 struct LocalFileCapability {
     session_id: String,
     expires_at: Instant,
     is_attached: bool,
     is_active: bool,
     is_revoked: bool,
+    attempt_id: Option<String>,
     kind: LocalFileCapabilityKind,
 }
 
@@ -1077,6 +1180,7 @@ impl LocalFileCapability {
     }
 }
 
+#[derive(Clone)]
 enum LocalFileCapabilityKind {
     Upload {
         remote_directory: String,
@@ -1120,16 +1224,18 @@ struct ClaimedUploadCapability {
     session_id: String,
     remote_directory: String,
     file: AuthorizedLocalUploadFile,
+    attempt_id: String,
 }
 
 struct ClaimedDownloadCapability {
     session_id: String,
     source: AuthorizedRemoteDownloadFile,
     target: AuthorizedLocalDownloadTarget,
+    attempt_id: String,
 }
 
 struct RegisteredTransfer {
-    cancellation: watch::Receiver<bool>,
+    control: watch::Receiver<RemoteFileTransferControl>,
     lifecycle: Arc<RemoteFileTransferLifecycle>,
     completion: watch::Sender<bool>,
 }
@@ -1147,9 +1253,20 @@ struct SessionEntry {
 
 struct TransferControl {
     session_id: String,
-    cancellation: watch::Sender<bool>,
+    control: watch::Sender<RemoteFileTransferControl>,
     lifecycle: Arc<RemoteFileTransferLifecycle>,
     completion: watch::Receiver<bool>,
+}
+
+fn finalize_transfer_result<T>(
+    result: Result<T, SessionManagerError>,
+    finish: RemoteFileTransferFinish,
+) -> Result<T, SessionManagerError> {
+    match finish {
+        RemoteFileTransferFinish::Completed => result,
+        RemoteFileTransferFinish::Paused => Err(SessionManagerError::TransferPaused),
+        RemoteFileTransferFinish::Cancelled => Err(SessionManagerError::TransferCancelled),
+    }
 }
 
 async fn finish_session(
@@ -1211,6 +1328,8 @@ pub enum SessionManagerError {
     RemoteRenameFailed,
     RemoteDeleteFailed,
     TransferCancelled,
+    TransferPaused,
+    TransferResumeInvalid,
     RemoteUploadFailed,
     RemoteDownloadUnavailable,
     RemoteDownloadFileChanged,
@@ -1246,6 +1365,8 @@ impl From<RemoteFileError> for SessionManagerError {
             RemoteFileError::RenameFailed => Self::RemoteRenameFailed,
             RemoteFileError::DeleteFailed => Self::RemoteDeleteFailed,
             RemoteFileError::TransferCancelled => Self::TransferCancelled,
+            RemoteFileError::TransferPaused => Self::TransferPaused,
+            RemoteFileError::TransferResumeInvalid => Self::TransferResumeInvalid,
             RemoteFileError::UploadFailed => Self::RemoteUploadFailed,
             RemoteFileError::RemoteDownloadUnavailable => Self::RemoteDownloadUnavailable,
             RemoteFileError::RemoteDownloadFileChanged => Self::RemoteDownloadFileChanged,
@@ -1298,6 +1419,10 @@ impl std::fmt::Display for SessionManagerError {
             Self::RemoteRenameFailed => formatter.write_str("remote entry rename failed"),
             Self::RemoteDeleteFailed => formatter.write_str("remote entry deletion failed"),
             Self::TransferCancelled => formatter.write_str("file transfer was cancelled"),
+            Self::TransferPaused => formatter.write_str("file transfer was paused"),
+            Self::TransferResumeInvalid => {
+                formatter.write_str("file transfer resume data is invalid")
+            }
             Self::RemoteUploadFailed => formatter.write_str("remote file upload failed"),
             Self::RemoteDownloadUnavailable => {
                 formatter.write_str("remote download source is unavailable")

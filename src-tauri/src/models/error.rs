@@ -206,6 +206,16 @@ impl From<SessionManagerError> for CommandError {
                 message: "文件传输已取消。",
                 field: None,
             },
+            SessionManagerError::TransferPaused => Self {
+                code: "transfer_paused",
+                message: "文件传输已暂停。",
+                field: None,
+            },
+            SessionManagerError::TransferResumeInvalid => Self {
+                code: "transfer_resume_invalid",
+                message: "断点数据已经失效，无法继续传输；请重新发起任务。",
+                field: Some("transferId"),
+            },
             SessionManagerError::RemoteUploadFailed => Self {
                 code: "remote_upload_failed",
                 message: "文件上传失败，请检查远程目录权限和连接状态。",

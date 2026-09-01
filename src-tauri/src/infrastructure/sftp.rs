@@ -1,6 +1,6 @@
 use std::fs::File as StdFile;
 use std::future::Future;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -9,12 +9,13 @@ use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{FileAttributes, FileType, OpenFlags};
 use same_file::Handle as FileIdentityHandle;
 use tokio::fs::{self, File as LocalFile, OpenOptions};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{RwLock, mpsc, watch};
 
 use crate::domain::sftp::{
     LocalUploadFileMetadata, RemoteDirectory, RemoteDownloadResult, RemoteFileEntry,
-    RemoteFileKind, RemoteFileTransferLifecycle, RemoteFileTransferProgress, RemoteUploadResult,
+    RemoteFileKind, RemoteFileTransferControl, RemoteFileTransferLifecycle,
+    RemoteFileTransferProgress, RemoteUploadResult,
 };
 
 const MAX_REMOTE_PATH_BYTES: usize = 16 * 1024;
@@ -76,7 +77,7 @@ impl AuthorizedRemoteDownloadFile {
 pub struct RemoteFileTransferRuntime {
     pub transfer_id: String,
     pub attempt_id: String,
-    pub cancellation: watch::Receiver<bool>,
+    pub control: watch::Receiver<RemoteFileTransferControl>,
     pub lifecycle: Arc<RemoteFileTransferLifecycle>,
     pub progress: mpsc::Sender<RemoteFileTransferProgress>,
 }
@@ -405,7 +406,7 @@ impl RemoteFileSession {
         let RemoteFileTransferRuntime {
             transfer_id,
             attempt_id,
-            mut cancellation,
+            mut control,
             lifecycle,
             progress,
         } = runtime;
@@ -414,14 +415,14 @@ impl RemoteFileSession {
             open_authorized_local_upload_file(local_file).await?;
         let total_bytes = local_metadata.total_bytes;
         let remote_directory = run_transfer_step(
-            &mut cancellation,
+            &mut control,
             self.client.canonicalize(remote_directory),
             RemoteFileError::DirectoryUnavailable,
         )
         .await?;
         let remote_path = join_remote_path(&remote_directory, &local_metadata.file_name);
         if run_transfer_step(
-            &mut cancellation,
+            &mut control,
             self.client.try_exists(remote_path.clone()),
             RemoteFileError::UploadFailed,
         )
@@ -432,22 +433,63 @@ impl RemoteFileSession {
 
         let temporary_name = format!(".connex-upload-{attempt_id}.part");
         let temporary_path = join_remote_path(&remote_directory, &temporary_name);
-        let remote_file = run_transfer_step(
-            &mut cancellation,
-            self.client.open_with_flags(
-                temporary_path.clone(),
-                OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
-            ),
+        let (remote_file, resume_offset) = if run_transfer_step(
+            &mut control,
+            self.client.try_exists(temporary_path.clone()),
+            RemoteFileError::UploadFailed,
+        )
+        .await?
+        {
+            let remote_file = run_transfer_step(
+                &mut control,
+                self.client
+                    .open_with_flags(temporary_path.clone(), OpenFlags::WRITE),
+                RemoteFileError::UploadFailed,
+            )
+            .await?;
+            let metadata = run_transfer_step(
+                &mut control,
+                remote_file.metadata(),
+                RemoteFileError::UploadFailed,
+            )
+            .await?;
+            let resume_offset = metadata.size.ok_or(RemoteFileError::UploadFailed)?;
+            if !metadata.is_regular() || resume_offset > total_bytes {
+                return Err(RemoteFileError::TransferResumeInvalid);
+            }
+            (remote_file, resume_offset)
+        } else {
+            let remote_file = run_transfer_step(
+                &mut control,
+                self.client.open_with_flags(
+                    temporary_path.clone(),
+                    OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+                ),
+                RemoteFileError::UploadFailed,
+            )
+            .await?;
+            (remote_file, 0)
+        };
+        run_transfer_step(
+            &mut control,
+            local_file_handle.seek(SeekFrom::Start(resume_offset)),
+            RemoteFileError::InvalidLocalFile,
+        )
+        .await?;
+        let mut remote_file = remote_file;
+        run_transfer_step(
+            &mut control,
+            remote_file.seek(SeekFrom::Start(resume_offset)),
             RemoteFileError::UploadFailed,
         )
         .await?;
-        let mut transferred_bytes = 0_u64;
+        let mut transferred_bytes = resume_offset;
         let mut buffer = vec![0_u8; TRANSFER_CHUNK_BYTES];
-        let mut reporter = TransferProgressReporter::new(progress, &transfer_id, total_bytes);
+        let mut reporter =
+            TransferProgressReporter::new(progress, &transfer_id, total_bytes, resume_offset);
         reporter.send_initial();
 
         let upload_result = {
-            let mut remote_file = remote_file;
             async {
                 while transferred_bytes < total_bytes {
                     let remaining_bytes = total_bytes - transferred_bytes;
@@ -455,7 +497,7 @@ impl RemoteFileSession {
                         .unwrap_or(usize::MAX)
                         .min(buffer.len());
                     let bytes_read = run_transfer_step(
-                        &mut cancellation,
+                        &mut control,
                         local_file_handle.read(&mut buffer[..read_length]),
                         RemoteFileError::InvalidLocalFile,
                     )
@@ -465,7 +507,7 @@ impl RemoteFileSession {
                     }
 
                     run_transfer_step(
-                        &mut cancellation,
+                        &mut control,
                         remote_file.write_all(&buffer[..bytes_read]),
                         RemoteFileError::UploadFailed,
                     )
@@ -481,7 +523,7 @@ impl RemoteFileSession {
 
                 let mut eof_probe = [0_u8; 1];
                 let extra_bytes = run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     local_file_handle.read(&mut eof_probe),
                     RemoteFileError::InvalidLocalFile,
                 )
@@ -491,7 +533,7 @@ impl RemoteFileSession {
                 }
 
                 let final_local_metadata = run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     local_file_handle.metadata(),
                     RemoteFileError::InvalidLocalFile,
                 )
@@ -502,14 +544,14 @@ impl RemoteFileSession {
                 validate_local_upload_authorization(local_file).await?;
 
                 run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     remote_file.close(),
                     RemoteFileError::UploadFailed,
                 )
                 .await?;
 
                 if run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     self.client.try_exists(remote_path.clone()),
                     RemoteFileError::UploadFailed,
                 )
@@ -518,7 +560,7 @@ impl RemoteFileSession {
                     return Err(RemoteFileError::RemoteFileExists);
                 }
 
-                ensure_transfer_not_cancelled(&cancellation)?;
+                ensure_transfer_running(&control)?;
                 if !lifecycle.begin_commit() {
                     return Err(RemoteFileError::TransferCancelled);
                 }
@@ -532,7 +574,9 @@ impl RemoteFileSession {
         };
 
         if let Err(error) = upload_result {
-            best_effort_temp_cleanup(self.client.remove_file(temporary_path)).await;
+            if error != RemoteFileError::TransferPaused {
+                best_effort_temp_cleanup(self.client.remove_file(temporary_path)).await;
+            }
             reporter.send_final(transferred_bytes);
             return Err(error);
         }
@@ -553,24 +597,24 @@ impl RemoteFileSession {
         let RemoteFileTransferRuntime {
             transfer_id,
             attempt_id,
-            mut cancellation,
+            mut control,
             lifecycle,
             progress,
         } = runtime;
         validate_remote_path(&remote_source.snapshot.canonical_path)?;
         validate_local_download_target(local_target).await?;
         let temporary_path = prepare_local_download_path(&attempt_id, local_target)?;
-        self.validate_remote_download_file(remote_source, &mut cancellation)
+        self.validate_remote_download_file(remote_source, &mut control)
             .await?;
         let remote_file = run_transfer_step(
-            &mut cancellation,
+            &mut control,
             self.client
                 .open(remote_source.snapshot.canonical_path.clone()),
             RemoteFileError::RemoteDownloadFailed,
         )
         .await?;
         let remote_metadata = run_transfer_step(
-            &mut cancellation,
+            &mut control,
             remote_file.metadata(),
             RemoteFileError::RemoteDownloadFailed,
         )
@@ -579,22 +623,31 @@ impl RemoteFileSession {
             return Err(RemoteFileError::RemoteDownloadFileChanged);
         }
         let total_bytes = remote_source.snapshot.total_bytes;
-        let mut local_options = OpenOptions::new();
-        local_options.write(true).create_new(true);
-        #[cfg(unix)]
-        local_options.mode(0o600);
-        let local_file = local_options
-            .open(&temporary_path)
-            .await
-            .map_err(|_| RemoteFileError::InvalidLocalDownloadTarget)?;
-        let mut transferred_bytes = 0_u64;
+        let (local_file, resume_offset) = open_local_download_attempt(&temporary_path).await?;
+        if resume_offset > total_bytes {
+            return Err(RemoteFileError::TransferResumeInvalid);
+        }
+        let mut remote_file = remote_file;
+        run_transfer_step(
+            &mut control,
+            remote_file.seek(SeekFrom::Start(resume_offset)),
+            RemoteFileError::RemoteDownloadFailed,
+        )
+        .await?;
+        let mut local_file = local_file;
+        run_transfer_step(
+            &mut control,
+            local_file.seek(SeekFrom::Start(resume_offset)),
+            RemoteFileError::LocalDownloadWriteFailed,
+        )
+        .await?;
+        let mut transferred_bytes = resume_offset;
         let mut buffer = vec![0_u8; TRANSFER_CHUNK_BYTES];
-        let mut reporter = TransferProgressReporter::new(progress, &transfer_id, total_bytes);
+        let mut reporter =
+            TransferProgressReporter::new(progress, &transfer_id, total_bytes, resume_offset);
         reporter.send_initial();
 
         let download_result = {
-            let mut remote_file = remote_file;
-            let mut local_file = local_file;
             async {
                 while transferred_bytes < total_bytes {
                     let remaining_bytes = total_bytes - transferred_bytes;
@@ -602,7 +655,7 @@ impl RemoteFileSession {
                         .unwrap_or(usize::MAX)
                         .min(buffer.len());
                     let bytes_read = run_transfer_step(
-                        &mut cancellation,
+                        &mut control,
                         remote_file.read(&mut buffer[..read_length]),
                         RemoteFileError::RemoteDownloadFailed,
                     )
@@ -612,7 +665,7 @@ impl RemoteFileSession {
                     }
 
                     run_transfer_step(
-                        &mut cancellation,
+                        &mut control,
                         local_file.write_all(&buffer[..bytes_read]),
                         RemoteFileError::LocalDownloadWriteFailed,
                     )
@@ -627,7 +680,7 @@ impl RemoteFileSession {
 
                 let mut eof_probe = [0_u8; 1];
                 let extra_bytes = run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     remote_file.read(&mut eof_probe),
                     RemoteFileError::RemoteDownloadFailed,
                 )
@@ -637,7 +690,7 @@ impl RemoteFileSession {
                 }
 
                 let final_remote_metadata = run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     remote_file.metadata(),
                     RemoteFileError::RemoteDownloadFailed,
                 )
@@ -650,21 +703,21 @@ impl RemoteFileSession {
                 }
 
                 run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     remote_file.close(),
                     RemoteFileError::RemoteDownloadFailed,
                 )
                 .await?;
-                self.validate_remote_download_file(remote_source, &mut cancellation)
+                self.validate_remote_download_file(remote_source, &mut control)
                     .await?;
                 run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     local_file.flush(),
                     RemoteFileError::LocalDownloadWriteFailed,
                 )
                 .await?;
                 run_transfer_step(
-                    &mut cancellation,
+                    &mut control,
                     local_file.sync_all(),
                     RemoteFileError::LocalDownloadWriteFailed,
                 )
@@ -676,7 +729,7 @@ impl RemoteFileSession {
         let download_result = match download_result {
             Ok(()) => {
                 async {
-                    ensure_transfer_not_cancelled(&cancellation)?;
+                    ensure_transfer_running(&control)?;
                     if !lifecycle.begin_commit() {
                         return Err(RemoteFileError::TransferCancelled);
                     }
@@ -689,7 +742,9 @@ impl RemoteFileSession {
         };
 
         if let Err(error) = download_result {
-            best_effort_temp_cleanup(fs::remove_file(&temporary_path)).await;
+            if error != RemoteFileError::TransferPaused {
+                best_effort_temp_cleanup(fs::remove_file(&temporary_path)).await;
+            }
             reporter.send_final(transferred_bytes);
             return Err(error);
         }
@@ -701,20 +756,49 @@ impl RemoteFileSession {
         })
     }
 
+    pub async fn cleanup_upload_attempt(
+        &self,
+        remote_directory: &str,
+        attempt_id: &str,
+    ) -> Result<(), RemoteFileError> {
+        validate_remote_path(remote_directory)?;
+        let remote_directory = self
+            .client
+            .canonicalize(remote_directory)
+            .await
+            .map_err(|_| RemoteFileError::DirectoryUnavailable)?;
+        let temporary_path = join_remote_path(
+            &remote_directory,
+            &format!(".connex-upload-{attempt_id}.part"),
+        );
+        if self
+            .client
+            .try_exists(temporary_path.clone())
+            .await
+            .map_err(|_| RemoteFileError::UploadFailed)?
+        {
+            self.client
+                .remove_file(temporary_path)
+                .await
+                .map_err(|_| RemoteFileError::UploadFailed)?;
+        }
+        Ok(())
+    }
+
     async fn validate_remote_download_file(
         &self,
         authorization: &AuthorizedRemoteDownloadFile,
-        cancellation: &mut watch::Receiver<bool>,
+        control: &mut watch::Receiver<RemoteFileTransferControl>,
     ) -> Result<(), RemoteFileError> {
         let canonical_path = run_transfer_step(
-            cancellation,
+            control,
             self.client
                 .canonicalize(authorization.snapshot.canonical_path.clone()),
             RemoteFileError::RemoteDownloadFailed,
         )
         .await?;
         let metadata = run_transfer_step(
-            cancellation,
+            control,
             self.client.symlink_metadata(canonical_path.clone()),
             RemoteFileError::RemoteDownloadFailed,
         )
@@ -799,6 +883,52 @@ fn prepare_local_download_path(
         return Err(RemoteFileError::InvalidLocalDownloadTarget);
     }
     Ok(temporary_path)
+}
+
+async fn open_local_download_attempt(
+    temporary_path: &Path,
+) -> Result<(LocalFile, u64), RemoteFileError> {
+    match fs::symlink_metadata(temporary_path).await {
+        Ok(metadata) => {
+            if !metadata.file_type().is_file() {
+                return Err(RemoteFileError::TransferResumeInvalid);
+            }
+            let local_file = OpenOptions::new()
+                .write(true)
+                .open(temporary_path)
+                .await
+                .map_err(|_| RemoteFileError::InvalidLocalDownloadTarget)?;
+            let metadata = local_file
+                .metadata()
+                .await
+                .map_err(|_| RemoteFileError::InvalidLocalDownloadTarget)?;
+            if !metadata.is_file() {
+                return Err(RemoteFileError::TransferResumeInvalid);
+            }
+            Ok((local_file, metadata.len()))
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            let mut local_options = OpenOptions::new();
+            local_options.write(true).create_new(true);
+            #[cfg(unix)]
+            local_options.mode(0o600);
+            let local_file = local_options
+                .open(temporary_path)
+                .await
+                .map_err(|_| RemoteFileError::InvalidLocalDownloadTarget)?;
+            Ok((local_file, 0))
+        }
+        Err(_) => Err(RemoteFileError::InvalidLocalDownloadTarget),
+    }
+}
+
+pub async fn cleanup_local_download_attempt(
+    attempt_id: &str,
+    authorization: &AuthorizedLocalDownloadTarget,
+) {
+    if let Ok(temporary_path) = prepare_local_download_path(attempt_id, authorization) {
+        best_effort_temp_cleanup(fs::remove_file(temporary_path)).await;
+    }
 }
 
 async fn validate_local_download_target(
@@ -978,32 +1108,35 @@ fn ensure_javascript_safe_file_size(size: u64) -> Result<(), RemoteFileError> {
     }
 }
 
-fn ensure_transfer_not_cancelled(
-    cancellation: &watch::Receiver<bool>,
+fn ensure_transfer_running(
+    control: &watch::Receiver<RemoteFileTransferControl>,
 ) -> Result<(), RemoteFileError> {
-    if *cancellation.borrow() {
-        Err(RemoteFileError::TransferCancelled)
-    } else {
-        Ok(())
+    match *control.borrow() {
+        RemoteFileTransferControl::Running => Ok(()),
+        RemoteFileTransferControl::Pause => Err(RemoteFileError::TransferPaused),
+        RemoteFileTransferControl::Cancel => Err(RemoteFileError::TransferCancelled),
     }
 }
 
 async fn run_transfer_step<T, E, F>(
-    cancellation: &mut watch::Receiver<bool>,
+    control: &mut watch::Receiver<RemoteFileTransferControl>,
     operation: F,
     failure: RemoteFileError,
 ) -> Result<T, RemoteFileError>
 where
     F: Future<Output = Result<T, E>>,
 {
-    ensure_transfer_not_cancelled(cancellation)?;
+    ensure_transfer_running(control)?;
     tokio::select! {
         biased;
-        changed = cancellation.changed() => {
-            if changed.is_ok() && *cancellation.borrow() {
-                Err(RemoteFileError::TransferCancelled)
-            } else {
-                Err(failure)
+        changed = control.changed() => {
+            match changed {
+                Ok(()) => match *control.borrow() {
+                    RemoteFileTransferControl::Running => Err(failure),
+                    RemoteFileTransferControl::Pause => Err(RemoteFileError::TransferPaused),
+                    RemoteFileTransferControl::Cancel => Err(RemoteFileError::TransferCancelled),
+                },
+                Err(_) => Err(failure),
             }
         }
         result = operation => result.map_err(|_| failure),
@@ -1076,13 +1209,14 @@ impl TransferProgressReporter {
         progress: mpsc::Sender<RemoteFileTransferProgress>,
         transfer_id: &str,
         total_bytes: u64,
+        initial_bytes: u64,
     ) -> Self {
         let now = Instant::now();
         Self {
             progress,
             transfer_id: transfer_id.to_owned(),
             total_bytes,
-            observed_bytes: 0,
+            observed_bytes: initial_bytes,
             observed_at: now,
             emitted_at: now,
             bytes_per_second: 0.0,
@@ -1091,7 +1225,7 @@ impl TransferProgressReporter {
     }
 
     fn send_initial(&self) {
-        let _send_result = self.progress.try_send(self.snapshot(0));
+        let _send_result = self.progress.try_send(self.snapshot(self.observed_bytes));
     }
 
     fn record(&mut self, transferred_bytes: u64) {
@@ -1154,6 +1288,8 @@ pub enum RemoteFileError {
     RenameFailed,
     DeleteFailed,
     TransferCancelled,
+    TransferPaused,
+    TransferResumeInvalid,
     UploadFailed,
     RemoteDownloadUnavailable,
     RemoteDownloadFileChanged,
@@ -1186,6 +1322,10 @@ impl std::fmt::Display for RemoteFileError {
             Self::RenameFailed => formatter.write_str("remote entry rename failed"),
             Self::DeleteFailed => formatter.write_str("remote entry deletion failed"),
             Self::TransferCancelled => formatter.write_str("file transfer was cancelled"),
+            Self::TransferPaused => formatter.write_str("file transfer was paused"),
+            Self::TransferResumeInvalid => {
+                formatter.write_str("file transfer resume data is invalid")
+            }
             Self::UploadFailed => formatter.write_str("remote file upload failed"),
             Self::RemoteDownloadUnavailable => {
                 formatter.write_str("remote download source is unavailable")

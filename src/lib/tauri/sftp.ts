@@ -7,7 +7,7 @@ import type {
   LocalUploadFileSelection,
   RemoteDirectory,
   RemoteDownloadResult,
-  RemoteFileTransferCancelStatus,
+  RemoteFileTransferControlStatus,
   RemoteFileTransferProgress,
   RemoteUploadResult,
   SelectLocalDownloadTargetInput,
@@ -25,6 +25,7 @@ const SELECT_LOCAL_DOWNLOAD_TARGET_COMMAND = "select_local_download_target";
 const ATTACH_REMOTE_FILE_TRANSFERS_COMMAND = "attach_remote_file_transfers";
 const UPLOAD_REMOTE_FILE_COMMAND = "upload_remote_file";
 const DOWNLOAD_REMOTE_FILE_COMMAND = "download_remote_file";
+const PAUSE_REMOTE_FILE_TRANSFER_COMMAND = "pause_remote_file_transfer";
 const CANCEL_REMOTE_FILE_TRANSFER_COMMAND = "cancel_remote_file_transfer";
 
 export function listRemoteDirectory(sessionId: string, path?: string) {
@@ -106,7 +107,13 @@ export function downloadRemoteFile(
 }
 
 export function cancelRemoteFileTransfer(transferId: string) {
-  return invoke<RemoteFileTransferCancelStatus>(CANCEL_REMOTE_FILE_TRANSFER_COMMAND, {
+  return invoke<RemoteFileTransferControlStatus>(CANCEL_REMOTE_FILE_TRANSFER_COMMAND, {
+    transferId,
+  });
+}
+
+export function pauseRemoteFileTransfer(transferId: string) {
+  return invoke<RemoteFileTransferControlStatus>(PAUSE_REMOTE_FILE_TRANSFER_COMMAND, {
     transferId,
   });
 }
