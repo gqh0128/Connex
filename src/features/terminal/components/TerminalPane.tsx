@@ -118,7 +118,7 @@ export function TerminalPane({
   onReconnect,
   onClose,
 }: TerminalPaneProps) {
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, colorSchemeId } = useTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const semanticHighlighterRef = useRef<TerminalSemanticHighlighter | null>(null);
@@ -394,7 +394,7 @@ export function TerminalPane({
       getTerminalSemanticPalette(resolvedTheme, themeProfileId),
     );
     fitRef.current?.();
-  }, [resolvedTheme, themeProfileId]);
+  }, [colorSchemeId, resolvedTheme, themeProfileId]);
 
   useEffect(() => {
     semanticHighlighterRef.current?.setEnabled(isSemanticHighlightingEnabled);

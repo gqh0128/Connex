@@ -1,3 +1,5 @@
+import { applyColorScheme, readStoredColorSchemeId } from "./colorSchemes";
+
 export const THEME_MODES = ["system", "light", "dark"] as const;
 
 export type ThemeMode = (typeof THEME_MODES)[number];
@@ -48,6 +50,7 @@ export function applyTheme(mode: ThemeMode): ResolvedTheme {
 }
 
 export function initializeTheme() {
+  applyColorScheme(readStoredColorSchemeId());
   return applyTheme(readStoredThemeMode());
 }
 

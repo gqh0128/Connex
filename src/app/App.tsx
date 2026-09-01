@@ -1,8 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ExitConfirmationDialog } from "@/app/ExitConfirmationDialog";
 import { useAppPreferences } from "@/app/useAppPreferences";
 import { useExitConfirmation } from "@/app/useExitConfirmation";
+import { useTheme } from "@/app/useTheme";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSshSessions } from "@/features/terminal/hooks/useSshSessions";
 import { useTerminalFonts } from "@/features/terminal/hooks/useTerminalFonts";
@@ -19,6 +20,7 @@ export function App() {
   const [openPageIds, setOpenPageIds] = useState<WorkspacePageId[]>([]);
   const sshSessions = useSshSessions();
   const appPreferences = useAppPreferences();
+  const { setColorSchemeId } = useTheme();
   const terminalFonts = useTerminalFonts(appPreferences.preferences.terminalFontId);
   const exitConfirmation = useExitConfirmation({
     confirmBeforeExit: appPreferences.preferences.confirmBeforeExit,
@@ -26,6 +28,16 @@ export function App() {
       await appPreferences.update({ confirmBeforeExit });
     },
   });
+
+  useEffect(() => {
+    if (!appPreferences.isLoading) {
+      setColorSchemeId(appPreferences.preferences.colorSchemeId);
+    }
+  }, [
+    appPreferences.isLoading,
+    appPreferences.preferences.colorSchemeId,
+    setColorSchemeId,
+  ]);
 
   const openPage = useCallback((pageId: WorkspacePageId) => {
     setOpenPageIds((current) =>

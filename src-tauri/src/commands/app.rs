@@ -11,6 +11,14 @@ const TERMINAL_FONT_WEIGHT_MAX: i64 = 800;
 const TERMINAL_FONT_WEIGHT_STEP: i64 = 100;
 const TERMINAL_LINE_HEIGHT_MIN: f64 = 1.0;
 const TERMINAL_LINE_HEIGHT_MAX: f64 = 2.0;
+const COLOR_SCHEME_IDS: [&str; 6] = [
+    "pine",
+    "business-blue",
+    "graphite",
+    "deep-teal",
+    "indigo",
+    "warm-stone",
+];
 
 #[tauri::command]
 pub fn get_app_info() -> AppInfo {
@@ -29,6 +37,7 @@ pub async fn get_app_preferences(
         .await
         .map(|preferences| AppPreferences {
             confirm_before_exit: preferences.confirm_before_exit,
+            color_scheme_id: preferences.color_scheme_id,
             terminal_semantic_highlighting_enabled: preferences
                 .terminal_semantic_highlighting_enabled,
             terminal_font_id: preferences.terminal_font_id,
@@ -45,6 +54,13 @@ pub async fn update_app_preferences(
     input: UpdateAppPreferencesInput,
     repository: State<'_, AppSettingsRepository>,
 ) -> Result<AppPreferences, CommandError> {
+    if !COLOR_SCHEME_IDS.contains(&input.color_scheme_id.as_str()) {
+        return Err(CommandError {
+            code: "invalid_color_scheme",
+            message: "请选择 Connex 支持的全局配色方案。",
+            field: Some("colorSchemeId"),
+        });
+    }
     if !(TERMINAL_FONT_WEIGHT_MIN..=TERMINAL_FONT_WEIGHT_MAX).contains(&input.terminal_font_weight)
         || input.terminal_font_weight % TERMINAL_FONT_WEIGHT_STEP != 0
     {
@@ -75,6 +91,7 @@ pub async fn update_app_preferences(
     repository
         .set_preferences(StoredAppPreferences {
             confirm_before_exit: input.confirm_before_exit,
+            color_scheme_id: input.color_scheme_id.clone(),
             terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
             terminal_font_id: input.terminal_font_id.clone(),
             terminal_font_weight: input.terminal_font_weight,
@@ -85,6 +102,7 @@ pub async fn update_app_preferences(
         .await
         .map(|()| AppPreferences {
             confirm_before_exit: input.confirm_before_exit,
+            color_scheme_id: input.color_scheme_id,
             terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
             terminal_font_id: input.terminal_font_id,
             terminal_font_weight: input.terminal_font_weight,

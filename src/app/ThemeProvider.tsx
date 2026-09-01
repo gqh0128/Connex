@@ -9,6 +9,12 @@ import {
 } from "react";
 
 import {
+  applyColorScheme,
+  readStoredColorSchemeId,
+  storeColorSchemeId,
+  type ColorSchemeId,
+} from "./colorSchemes";
+import {
   applyTheme,
   getSystemThemeQuery,
   readStoredThemeMode,
@@ -33,6 +39,9 @@ async function syncNativeTheme(theme: ResolvedTheme) {
 
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [mode, setModeState] = useState<ThemeMode>(readStoredThemeMode);
+  const [colorSchemeId, setColorSchemeIdState] = useState<ColorSchemeId>(
+    readStoredColorSchemeId,
+  );
   const [systemTheme, setSystemTheme] = useState(() => resolveTheme("system"));
   const resolvedTheme = mode === "system" ? systemTheme : mode;
 
@@ -45,6 +54,12 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       setSystemTheme(nextTheme);
     }
     void syncNativeTheme(nextTheme);
+  }, []);
+
+  const setColorSchemeId = useCallback((nextColorSchemeId: ColorSchemeId) => {
+    storeColorSchemeId(nextColorSchemeId);
+    applyColorScheme(nextColorSchemeId);
+    setColorSchemeIdState(nextColorSchemeId);
   }, []);
 
   useEffect(() => {
@@ -68,9 +83,13 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     };
   }, [mode]);
 
+  useEffect(() => {
+    applyColorScheme(colorSchemeId);
+  }, [colorSchemeId]);
+
   const value = useMemo(
-    () => ({ mode, resolvedTheme, setMode }),
-    [mode, resolvedTheme, setMode],
+    () => ({ mode, resolvedTheme, colorSchemeId, setMode, setColorSchemeId }),
+    [colorSchemeId, mode, resolvedTheme, setColorSchemeId, setMode],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

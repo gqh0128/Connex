@@ -122,6 +122,7 @@ src-tauri/src/
 - 不使用索引作为会变化列表的 key，不在 render 中创建有副作用的对象。
 - 图标按钮必须有可访问名称；表单控件必须有 label 或 `aria-label`。
 - Tailwind 类优先，主题值必须来自 `src/styles/globals.css` 的语义 token，避免散落硬编码颜色。
+- 全局配色使用 `app/colorSchemes.ts` 中的稳定方案 ID，具体分级色值只定义在 `src/styles/globals.css`；新增预设不能在设置页或业务组件中增加颜色分支。
 - 用户可见布局、主题、配色、密度和状态映射遵循 `docs/ui-design-system.md`；有意改变基线时必须在同一提交更新文档。
 - shadcn/ui 组件是仓库自有代码，可以按产品需要修改，但通用原语与业务组件必须分开。
 

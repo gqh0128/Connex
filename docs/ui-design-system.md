@@ -86,7 +86,7 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 - 设置等覆盖中央工作区的完整页面也进入同一标签栏，并以单例标签打开或聚焦。会话标签与页面标签共享选中、关闭和 `Cmd/Ctrl+W` 行为，关闭当前页面标签后返回最近保留的会话工作区。
 - 文件面板开关固定在标签栏最右侧，使用 `24 × 24px` 单图标按钮；通过 Tooltip、可访问名称和按下状态表达打开或关闭，避免常驻文字占用标签空间。页面标签激活时禁用这一会话专属操作。
 - 标签总宽度超出可用空间时保持单行并允许横向滑动，不显示滚动条轨道，也不得产生纵向滚动条或改变标签栏固定高度。新建或切换标签后，标签栏必须自动滚动到当前标签可见，但不能抢占终端输入焦点。
-- 欢迎页和未连接页使用 `Empty`。每个空状态只保留一个主操作和至多一个次操作。
+- 欢迎页和未连接页使用 `Empty`。启动后无会话的欢迎页不显示品牌图标，使用“开始一个远程会话”标题、单句工作区说明、一个“新建 SSH 连接”主操作和紧凑快捷键提示；其他空状态同样只保留一个主操作和至多一个次操作。
 - 设置入口只位于应用全局栏；连接侧栏底部不再保留重复入口。
 
 ### 3.2 终端
@@ -120,6 +120,7 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 - 设置由全局栏右侧图标按钮打开为工作区标签；重复点击只聚焦已有标签，不创建副本。返回会话通过点击对应会话标签完成，关闭设置使用标签叉号或 `Cmd/Ctrl+W`。
 - 设置页“通用”区域提供“退出前确认”复选框。用户记住直接退出后可在此重新开启；读取和保存期间禁用控件，失败信息显示在字段内。
 - 设置页“外观”区域提供“终端语义高亮”复选框，默认开启。关闭后只停用 Connex 附加的语义 decoration，不影响远端 ANSI、URL 悬停与链接打开能力。
+- 设置页“外观”区域提供全局配色选择器，使用六项紧凑 `ToggleGroup` 展示松柏绿、商务蓝、石墨灰、深海青、沉稳靛和暖岩棕。每项展示主色、淡选中态与工作区底色三级色点；切换后立即应用到整个应用并持久化，保存失败时回滚原方案。
 - 设置页“外观”区域提供终端字体选择器和“导入字体”操作。选择器用稳定 profile ID 同时列出内置预设与已导入字体；导入支持不超过 10 MiB 的 TTF、OTF、WOFF 和 WOFF2，成功后立即选中并应用到所有 xterm 会话。删除自定义字体必须使用 `AlertDialog`，只删除 Connex 保存的副本，不处理用户原始文件。
 - 字体设置上方提供只读 xterm.js 预览，固定展示 Ubuntu 欢迎信息、常用 URL、`user@host` 提示符、路径、命令选项和构建结果。预览必须复用正式终端的主题、字体、字重、字号与行距，并在设置变化后立即刷新；不得连接 SSH 或获取真实会话内容。
 - 设置页“外观”区域提供 9–32 px 的终端字号设置，使用紧凑 `InputGroup` 组合减小按钮、数值输入、单位和增大按钮。另设“快捷键调整字号”复选框，默认开启；终端获得焦点时，macOS 使用 `Command +/-`，Windows 和 Linux 使用 `Ctrl +/-`，主键盘与数字键盘加减键都应可用。
@@ -161,16 +162,16 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 1. 启动时先根据系统 `prefers-color-scheme` 绘制，避免空白或固定暗色闪烁。
 2. 根节点使用 `:root` 表示浅色，`.dark` 表示深色，并同步正确的 `color-scheme`。
 3. `system` 模式持续监听系统主题变化；用户选择固定主题后不再响应系统变化。
-4. 主题偏好作为非敏感应用设置保存。允许在本地只镜像这一项启动关键值，用于 React 挂载前恢复主题；Rust 设置存储仍是最终来源。
+4. 明暗模式与全局配色属于非敏感应用外观设置。允许在 localStorage 镜像首帧关键值，在 React 挂载前恢复；全局配色仍以 Rust/SQLite 设置存储为最终来源。
 5. 主题变化同时更新 WebView、xterm 主题和 Tauri 原生窗口外观，不能出现浅色外壳配深色原生控件。
 
-主题切换不重新挂载终端、文件列表或会话，只更新语义 token 和 xterm theme adapter。
+主题或全局配色切换不重新挂载终端、文件列表或会话，只更新语义 token 和 xterm theme adapter。
 
 ## 6. 语义配色
 
 所有颜色通过 `src/styles/globals.css` 中的 CSS 变量暴露。业务组件只能使用语义类，例如 `bg-background`、`text-muted-foreground` 和 `border-border`，不能使用 `text-zinc-*`、十六进制色或独立 RGB/OKLCH 值。
 
-核心 token 固定如下；`card-foreground` 和 `popover-foreground` 分别跟随 `foreground`，除非经过整体主题评审后修改。
+中性基础 token 固定如下；`card-foreground` 和 `popover-foreground` 分别跟随 `foreground`，除非经过整体主题评审后修改。`primary`、`primary-foreground`、`secondary`、`secondary-foreground`、`accent`、`accent-foreground`、`ring`、`sidebar` 和 `workspace` 由当前全局配色 profile 为浅色与深色分别注入。
 
 | Token                    | 浅色 `:root`             | 深色 `.dark`             | 用途                 |
 | ------------------------ | ------------------------ | ------------------------ | -------------------- |
@@ -178,22 +179,22 @@ Connex 是高频使用的桌面生产力工具，不是营销页或数据看板�
 | `foreground`             | `oklch(0.205 0.012 264)` | `oklch(0.940 0.008 265)` | 主要文字             |
 | `card`                   | `oklch(1 0 0)`           | `oklch(0.180 0.009 265)` | 卡片与抬升表面       |
 | `popover`                | `oklch(1 0 0)`           | `oklch(0.190 0.010 265)` | 浮层                 |
-| `primary`                | `oklch(0.620 0.160 162)` | `oklch(0.720 0.160 162)` | 主操作、活动指示     |
-| `primary-foreground`     | `oklch(0.140 0.025 162)` | `oklch(0.140 0.025 162)` | 主色表面文字         |
-| `secondary`              | `oklch(0.955 0.006 264)` | `oklch(0.230 0.011 265)` | 次级控件表面         |
-| `secondary-foreground`   | `oklch(0.270 0.012 264)` | `oklch(0.920 0.008 265)` | 次级控件文字         |
+| `primary`                | profile                  | profile                  | 主操作、活动指示     |
+| `primary-foreground`     | profile                  | profile                  | 主色表面文字         |
+| `secondary`              | profile                  | profile                  | 次级控件表面         |
+| `secondary-foreground`   | profile                  | profile                  | 次级控件文字         |
 | `muted`                  | `oklch(0.955 0.006 264)` | `oklch(0.220 0.010 265)` | 弱化表面             |
 | `muted-foreground`       | `oklch(0.490 0.015 264)` | `oklch(0.680 0.012 265)` | 辅助文字             |
-| `accent`                 | `oklch(0.940 0.028 162)` | `oklch(0.235 0.014 265)` | hover、选中项        |
-| `accent-foreground`      | `oklch(0.300 0.080 162)` | `oklch(0.950 0.008 265)` | accent 表面文字      |
+| `accent`                 | profile                  | profile                  | hover、选中项        |
+| `accent-foreground`      | profile                  | profile                  | accent 表面文字      |
 | `destructive`            | `oklch(0.560 0.200 27)`  | `oklch(0.640 0.200 25)`  | 删除与严重错误       |
 | `destructive-foreground` | `oklch(0.985 0 0)`       | `oklch(0.140 0.010 25)`  | destructive 表面文字 |
 | `border`                 | `oklch(0.900 0.008 264)` | `oklch(0.270 0.012 265)` | 分隔线与边框         |
 | `input`                  | `oklch(0.860 0.010 264)` | `oklch(0.290 0.012 265)` | 输入边框             |
-| `ring`                   | `oklch(0.620 0.160 162)` | `oklch(0.720 0.160 162)` | 键盘焦点环           |
-| `sidebar`                | `oklch(0.970 0.005 264)` | `oklch(0.165 0.009 265)` | 连接侧栏             |
+| `ring`                   | profile                  | profile                  | 键盘焦点环           |
+| `sidebar`                | profile                  | profile                  | 连接侧栏             |
 | `surface`                | `oklch(1 0 0)`           | `oklch(0.180 0.009 265)` | 文件面板与停靠表面   |
-| `workspace`              | `oklch(0.978 0.004 264)` | `oklch(0.130 0.008 265)` | 中央工作区           |
+| `workspace`              | profile                  | profile                  | 中央工作区           |
 | `terminal`               | `oklch(0.992 0.002 264)` | `oklch(0.115 0.008 265)` | 终端背景             |
 
 状态色独立于品牌主色，必须同时配合图标、文字或形状表达，不能只靠颜色区分：

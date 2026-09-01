@@ -32,7 +32,7 @@ export function TerminalAppearancePreview({
   fontSize,
   lineHeight,
 }: TerminalAppearancePreviewProps) {
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, colorSchemeId } = useTheme();
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<(() => void) | null>(null);
@@ -137,6 +137,7 @@ export function TerminalAppearancePreview({
     fontWeight,
     fontWeightBold,
     lineHeight,
+    colorSchemeId,
     resolvedTheme,
     themeProfileId,
   ]);

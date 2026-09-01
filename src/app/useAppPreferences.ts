@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { DEFAULT_COLOR_SCHEME_ID } from "@/app/colorSchemes";
 import { getAppPreferences, updateAppPreferences } from "@/lib/tauri/app";
 import { getCommandError } from "@/lib/tauri/errors";
 import type { AppPreferences } from "@/types/app";
@@ -11,6 +12,7 @@ import { DEFAULT_TERMINAL_LINE_HEIGHT } from "@/features/terminal/terminalLineHe
 
 const DEFAULT_APP_PREFERENCES: AppPreferences = {
   confirmBeforeExit: true,
+  colorSchemeId: DEFAULT_COLOR_SCHEME_ID,
   terminalSemanticHighlightingEnabled: true,
   terminalFontId: DEFAULT_TERMINAL_FONT_ID,
   terminalFontWeight: DEFAULT_TERMINAL_FONT_WEIGHT,

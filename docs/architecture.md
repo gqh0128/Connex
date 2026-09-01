@@ -56,6 +56,8 @@ SSH 标签由应用层的 `useSshSessions` 统一编排：前端 `localId` 只�
 
 设置页的 `TerminalAppearancePreview` 使用独立、只读的 xterm.js 实例渲染固定终端样例，并复用正式终端的 theme profile、字体族、字重、字号和行距参数。预览不连接 SSH、不注册链接或语义扫描器，样例颜色直接从当前 profile 的语义 palette 生成 ANSI 序列；调整外观设置时只更新预览实例，不把预览状态写回会话。
 
+应用全局配色与终端 ANSI profile 分层管理。`app/colorSchemes` 只注册松柏绿、商务蓝、石墨灰、深海青、沉稳靛和暖岩棕等稳定方案 ID 与展示元数据；每套方案的浅色/深色主色、二级表面、淡选中态、焦点环、侧栏和工作区色值统一定义在 `styles/globals.css`，由根节点 `data-color-scheme` 切换。React 业务组件始终消费 `primary`、`secondary`、`accent`、`ring`、`sidebar`、`workspace` 等语义 token，不读取方案 ID 分支。全局方案会影响 xterm 的光标与选区，但不修改独立的 ANSI 和终端语义高亮 palette。
+
 ## 4. Rust 架构
 
 Rust 端采用模块化单体：
@@ -193,7 +195,7 @@ v1 备份只迁移私钥路径和可选的私钥口令，不复制私钥文件�
 
 known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主机可以保存多种主机密钥算法；已经记录的算法出现不同指纹时必须拒绝连接，不能由普通的“首次信任”流程覆盖。
 
-应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、`terminal_semantic_highlighting_enabled`、稳定的 `terminal_font_id`、`terminal_font_size` 和 `terminal_font_size_shortcuts_enabled`。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改、终端快捷键修改和退出确认中的“记住我的选择”都必须写入 SQLite；读取失败时采用安全默认值，仍然显示退出确认、启用语义高亮、使用内置 JetBrains Mono、13 px 字号并开启字号快捷键。字号在前后端统一限制为 9–32 px。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
+应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、全局 `color_scheme_id`、`terminal_semantic_highlighting_enabled`、稳定的 `terminal_font_id`、终端字重、字号、行距和字号快捷键开关。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改、终端快捷键修改和退出确认中的“记住我的选择”都必须写入 SQLite；读取失败时采用安全默认值，仍然显示退出确认、使用松柏绿、启用语义高亮、使用内置 JetBrains Mono、500 字重、13 px 字号、1.10 行距并开启字号快捷键。全局配色同时镜像到 localStorage 作为首帧关键值，SQLite 仍是最终来源。字号在前后端统一限制为 9–32 px。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
 
 用户选择的字体由 `TerminalFontService` 校验扩展名、文件签名和 10 MiB 大小限制，再以 UUID 文件名复制到应用数据目录的 `terminal-fonts` 子目录；SQLite 的 `terminal_font_files` 只保存稳定 ID、展示名称、格式、大小和内部文件名，不保留用户原始路径。Commands 保持薄，文件校验与复制在 service 中完成，元数据读写位于 repository。删除字体必须确认且只删除 Connex 的副本；当前选中的自定义字体删除前先切回默认 profile。
 

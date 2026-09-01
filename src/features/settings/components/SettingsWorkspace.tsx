@@ -1,6 +1,12 @@
 import { Monitor, Moon, Sun, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 
+import {
+  COLOR_SCHEMES,
+  getColorScheme,
+  isColorSchemeId,
+  type ColorSchemeId,
+} from "@/app/colorSchemes";
 import { isThemeMode } from "@/app/theme";
 import { useTheme } from "@/app/useTheme";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +55,7 @@ export function SettingsWorkspace({
   terminalFonts,
   onConnectionsImported,
 }: SettingsWorkspaceProps) {
-  const { mode, resolvedTheme, setMode } = useTheme();
+  const { mode, resolvedTheme, colorSchemeId, setMode, setColorSchemeId } = useTheme();
   const [isSavingExitPreference, setIsSavingExitPreference] = useState(false);
   const [exitPreferenceError, setExitPreferenceError] = useState<string | null>(null);
   const [isSavingSemanticHighlighting, setIsSavingSemanticHighlighting] =
@@ -57,7 +63,10 @@ export function SettingsWorkspace({
   const [semanticHighlightingError, setSemanticHighlightingError] = useState<
     string | null
   >(null);
+  const [isSavingColorScheme, setIsSavingColorScheme] = useState(false);
+  const [colorSchemeError, setColorSchemeError] = useState<string | null>(null);
   const terminalThemeProfile = getTerminalThemeProfile(terminalThemeProfileId);
+  const colorScheme = getColorScheme(colorSchemeId);
 
   const updateExitPreference = async (nextValue: boolean) => {
     setIsSavingExitPreference(true);
@@ -91,6 +100,24 @@ export function SettingsWorkspace({
       setIsSavingSemanticHighlighting(false);
     }
   };
+
+  const updateColorScheme = async (nextColorSchemeId: ColorSchemeId) => {
+    const previousColorSchemeId = colorSchemeId;
+    setIsSavingColorScheme(true);
+    setColorSchemeError(null);
+    setColorSchemeId(nextColorSchemeId);
+    try {
+      await onAppPreferencesChange({ colorSchemeId: nextColorSchemeId });
+    } catch {
+      setColorSchemeId(previousColorSchemeId);
+      setColorSchemeError("无法保存全局配色，请稍后重试。");
+    } finally {
+      setIsSavingColorScheme(false);
+    }
+  };
+
+  const displayedColorSchemeError = colorSchemeError ?? appPreferencesError;
+  const isColorSchemeDisabled = isAppPreferencesLoading || isSavingColorScheme;
 
   return (
     <ScrollArea className="h-full min-h-0 bg-workspace">
@@ -142,7 +169,7 @@ export function SettingsWorkspace({
               外观
             </h2>
             <Badge variant="outline">
-              当前{resolvedTheme === "dark" ? "深色" : "浅色"}
+              当前{resolvedTheme === "dark" ? "深色" : "浅色"} · {colorScheme.label}
             </Badge>
           </div>
 
@@ -180,6 +207,58 @@ export function SettingsWorkspace({
                     <Moon />
                     深色
                   </ToggleGroupItem>
+                </ToggleGroup>
+              </Field>
+
+              <Separator />
+
+              <Field
+                className="p-5"
+                data-disabled={isColorSchemeDisabled}
+                data-invalid={Boolean(displayedColorSchemeError)}
+              >
+                <FieldContent>
+                  <FieldTitle id="color-scheme-label">全局配色</FieldTitle>
+                  <FieldDescription>
+                    同时调整主操作、二级表面、选中反馈、焦点和工作区层级。
+                  </FieldDescription>
+                  <FieldError>{displayedColorSchemeError}</FieldError>
+                </FieldContent>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  spacing={2}
+                  value={colorSchemeId}
+                  disabled={isColorSchemeDisabled}
+                  aria-labelledby="color-scheme-label"
+                  aria-invalid={Boolean(displayedColorSchemeError)}
+                  className="grid w-full grid-cols-2 sm:grid-cols-3"
+                  onValueChange={(value) => {
+                    if (isColorSchemeId(value) && value !== colorSchemeId) {
+                      void updateColorScheme(value);
+                    }
+                  }}
+                >
+                  {COLOR_SCHEMES.map((scheme) => (
+                    <ToggleGroupItem
+                      key={scheme.id}
+                      value={scheme.id}
+                      aria-label={scheme.label}
+                      title={scheme.description}
+                      className="h-10 w-full justify-start"
+                    >
+                      <span
+                        className="color-scheme-swatches"
+                        data-color-scheme-preview={scheme.id}
+                        aria-hidden="true"
+                      >
+                        <span className="color-scheme-swatch color-scheme-swatch-primary" />
+                        <span className="color-scheme-swatch color-scheme-swatch-accent" />
+                        <span className="color-scheme-swatch color-scheme-swatch-workspace" />
+                      </span>
+                      {scheme.label}
+                    </ToggleGroupItem>
+                  ))}
                 </ToggleGroup>
               </Field>
 
