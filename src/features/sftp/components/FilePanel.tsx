@@ -23,7 +23,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -45,10 +45,17 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  useRemoteFileSelection,
+  type RemoteFileSelectionController,
+} from "@/features/sftp/hooks/useRemoteFileSelection";
 import type { RemoteFilesController } from "@/features/sftp/hooks/useRemoteFiles";
 import { canWriteClipboardText, writeClipboardText } from "@/lib/clipboard";
+import { hasPrimaryShortcutModifier } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { SessionSnapshot } from "@/types/sessions";
 import type { RemoteFileEntry, RemoteFileKind } from "@/types/sftp";
@@ -97,9 +104,9 @@ function ScopedFilePanel({
   const { directory, isConnected, isLoading } = browser;
   const [nameAction, setNameAction] = useState<RemoteEntryNameAction | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<RemoteFileEntry | null>(null);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const selection = useRemoteFileSelection(directory?.entries ?? []);
   const selectedEntry =
-    directory?.entries.find((entry) => entry.path === selectedPath) ?? null;
+    selection.selectedEntries.length === 1 ? selection.selectedEntries[0] : null;
   const selectedFile = selectedEntry?.kind === "file" ? selectedEntry : null;
   const selectedFolder = selectedEntry?.kind === "directory" ? selectedEntry : null;
   const selectedDownloadEntry = selectedFile ?? selectedFolder;
@@ -115,81 +122,6 @@ function ScopedFilePanel({
               className,
             )}
           >
-            <div className="flex h-9 shrink-0 items-center justify-end border-b px-1">
-              <div className="flex items-center gap-0.5">
-                <PanelButton
-                  label={isSelectingUpload ? "正在选择文件" : "上传文件"}
-                  icon={Upload}
-                  disabled={
-                    !isConnected ||
-                    !directory ||
-                    isLoading ||
-                    isSelectingUpload ||
-                    isSelectingDownload ||
-                    !onUpload
-                  }
-                  onClick={onUpload}
-                />
-                <PanelButton
-                  label={isSelectingUpload ? "正在选择文件夹" : "上传文件夹"}
-                  icon={FolderUp}
-                  disabled={
-                    !isConnected ||
-                    !directory ||
-                    isLoading ||
-                    isSelectingUpload ||
-                    isSelectingDownload ||
-                    !onUploadFolder
-                  }
-                  onClick={onUploadFolder}
-                />
-                <PanelButton
-                  label={
-                    isSelectingDownload
-                      ? "正在选择保存位置"
-                      : selectedFolder
-                        ? "下载文件夹"
-                        : "下载文件"
-                  }
-                  icon={selectedFolder ? FolderDown : Download}
-                  disabled={
-                    !isConnected ||
-                    !selectedDownloadEntry ||
-                    isLoading ||
-                    isSelectingUpload ||
-                    isSelectingDownload ||
-                    (selectedFile ? !onDownload : !onDownloadFolder)
-                  }
-                  onClick={
-                    selectedFile && onDownload
-                      ? () => onDownload(selectedFile)
-                      : selectedFolder && onDownloadFolder
-                        ? () => onDownloadFolder(selectedFolder)
-                        : undefined
-                  }
-                />
-                <PanelButton
-                  label="新建文件夹"
-                  icon={FolderPlus}
-                  disabled={!canMutate}
-                  onClick={() => setNameAction({ type: "createDirectory" })}
-                />
-                <PanelButton
-                  label={isLoading ? "正在刷新" : "刷新"}
-                  icon={RefreshCw}
-                  iconClassName={cn(
-                    isLoading && "animate-spin motion-reduce:animate-none",
-                  )}
-                  disabled={!isConnected || isLoading}
-                  onClick={browser.refresh}
-                />
-                <PanelButton label="更多操作" icon={MoreHorizontal} disabled />
-                {onClose ? (
-                  <PanelButton label="关闭文件面板" icon={X} onClick={onClose} />
-                ) : null}
-              </div>
-            </div>
-
             <RemotePath
               path={directory?.path ?? null}
               isConnected={isConnected}
@@ -199,6 +131,25 @@ function ScopedFilePanel({
               onGoBack={browser.goBack}
               onGoForward={browser.goForward}
               onNavigate={browser.openDirectory}
+              actions={
+                <FilePanelActions
+                  canMutate={canMutate}
+                  isConnected={isConnected}
+                  isLoading={isLoading}
+                  isSelectingUpload={isSelectingUpload}
+                  isSelectingDownload={isSelectingDownload}
+                  selectedCount={selection.selectedPaths.size}
+                  selectedEntry={selectedDownloadEntry}
+                  onUpload={onUpload}
+                  onUploadFolder={onUploadFolder}
+                  onDownload={onDownload}
+                  onDownloadFolder={onDownloadFolder}
+                  onCreateDirectory={() => setNameAction({ type: "createDirectory" })}
+                  onCreateFile={() => setNameAction({ type: "createFile" })}
+                  onRefresh={browser.refresh}
+                  onClose={onClose}
+                />
+              }
             />
 
             <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] border-b px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -210,9 +161,8 @@ function ScopedFilePanel({
             <FilePanelContent
               session={session}
               browser={browser}
-              selectedPath={selectedPath}
+              selection={selection}
               isSelectingDownload={isSelectingUpload || isSelectingDownload}
-              onSelectedPathChange={setSelectedPath}
               onDownload={onDownload}
               onDownloadFolder={onDownloadFolder}
               onRename={setNameAction}
@@ -328,9 +278,8 @@ function ScopedFilePanel({
 type FilePanelContentProps = {
   session: SessionSnapshot | null;
   browser: RemoteFilesController;
-  selectedPath: string | null;
+  selection: RemoteFileSelectionController;
   isSelectingDownload: boolean;
-  onSelectedPathChange: (path: string) => void;
   onDownload?: (entry: RemoteFileEntry) => void;
   onDownloadFolder?: (entry: RemoteFileEntry) => void;
   onRename: (action: RemoteEntryNameAction) => void;
@@ -340,15 +289,15 @@ type FilePanelContentProps = {
 function FilePanelContent({
   session,
   browser,
-  selectedPath,
+  selection,
   isSelectingDownload,
-  onSelectedPathChange,
   onDownload,
   onDownloadFolder,
   onRename,
   onDelete,
 }: FilePanelContentProps) {
   const { directory, error, isLoading } = browser;
+  const listRef = useRef<HTMLDivElement>(null);
 
   if (!session) {
     return (
@@ -417,15 +366,48 @@ function FilePanelContent({
 
   return (
     <ScrollArea className="min-h-0 flex-1" aria-busy={isLoading}>
-      <div role="listbox" aria-label={`${directory.path} 的远程文件`}>
-        {directory.entries.map((entry) => (
+      <div
+        ref={listRef}
+        role="listbox"
+        aria-label={`${directory.path} 的远程文件`}
+        aria-multiselectable="true"
+        onKeyDown={(event) => {
+          if (
+            hasPrimaryShortcutModifier(event.nativeEvent) &&
+            event.key.toLocaleLowerCase() === "a"
+          ) {
+            event.preventDefault();
+            selection.selectAll();
+            return;
+          }
+
+          if (event.key === "Escape") {
+            event.preventDefault();
+            selection.clear();
+          }
+        }}
+      >
+        {directory.entries.map((entry, index) => (
           <RemoteFileRow
             key={entry.path}
             entry={entry}
-            isSelected={entry.path === selectedPath}
+            index={index}
+            entryCount={directory.entries.length}
+            listRef={listRef}
+            isSelected={selection.selectedPaths.has(entry.path)}
+            selectedCount={selection.selectedPaths.size}
             isBusy={isLoading}
             isSelectingDownload={isSelectingDownload}
-            onSelect={() => onSelectedPathChange(entry.path)}
+            onSelect={(event) =>
+              selection.select(entry.path, getSelectionModifiers(event))
+            }
+            onMoveSelection={(nextIndex, event) => {
+              const nextEntry = directory.entries[nextIndex];
+              if (nextEntry) {
+                selection.select(nextEntry.path, getSelectionModifiers(event));
+              }
+            }}
+            onContextSelect={() => selection.selectForContextMenu(entry.path)}
             onOpenDirectory={browser.openDirectory}
             onDownload={onDownload}
             onDownloadFolder={onDownloadFolder}
@@ -477,6 +459,7 @@ type RemotePathProps = {
   onGoBack: () => void;
   onGoForward: () => void;
   onNavigate: (path: string) => void;
+  actions: React.ReactNode;
 };
 
 function RemotePath({
@@ -488,6 +471,7 @@ function RemotePath({
   onGoBack,
   onGoForward,
   onNavigate,
+  actions,
 }: RemotePathProps) {
   const breadcrumbs = path ? getPathBreadcrumbs(path) : [];
 
@@ -547,6 +531,7 @@ function RemotePath({
           </span>
         )}
       </div>
+      <div className="ml-auto flex shrink-0 items-center">{actions}</div>
     </nav>
   );
 }
@@ -576,10 +561,16 @@ function getPathBreadcrumbs(path: string): PathBreadcrumb[] {
 
 type RemoteFileRowProps = {
   entry: RemoteFileEntry;
+  index: number;
+  entryCount: number;
+  listRef: React.RefObject<HTMLDivElement | null>;
   isSelected: boolean;
+  selectedCount: number;
   isBusy: boolean;
   isSelectingDownload: boolean;
-  onSelect: () => void;
+  onSelect: (event: MouseEvent | KeyboardEvent) => void;
+  onMoveSelection: (index: number, event: KeyboardEvent) => void;
+  onContextSelect: () => void;
   onOpenDirectory: (path: string) => void;
   onDownload?: (entry: RemoteFileEntry) => void;
   onDownloadFolder?: (entry: RemoteFileEntry) => void;
@@ -590,10 +581,16 @@ type RemoteFileRowProps = {
 
 function RemoteFileRow({
   entry,
+  index,
+  entryCount,
+  listRef,
   isSelected,
+  selectedCount,
   isBusy,
   isSelectingDownload,
   onSelect,
+  onMoveSelection,
+  onContextSelect,
   onOpenDirectory,
   onDownload,
   onDownloadFolder,
@@ -614,9 +611,10 @@ function RemoteFileRow({
         <div
           role="option"
           tabIndex={0}
+          data-file-index={index}
           aria-selected={isSelected}
           className={cn(
-            "grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_4.5rem_4rem] items-center border-b px-3 text-xs outline-none last:border-b-0 hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=open]:bg-accent",
+            "grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_4.5rem_4rem] select-none items-center border-b px-3 text-xs outline-none last:border-b-0 hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=open]:bg-accent",
             isSelected && "bg-accent text-accent-foreground",
           )}
           title={entry.kind === "directory" ? "双击打开目录" : undefined}
@@ -629,20 +627,35 @@ function RemoteFileRow({
           onKeyDown={(event) => {
             if (event.key === " ") {
               event.preventDefault();
-              onSelect();
+              onSelect(event);
               return;
             }
 
             if (event.key === "Enter") {
               event.preventDefault();
-              onSelect();
+              if (!isSelected) {
+                onSelect(event);
+              }
               if (entry.kind === "directory") {
                 onOpenDirectory(entry.path);
+              }
+              return;
+            }
+
+            const nextIndex = getKeyboardNavigationIndex(event.key, index, entryCount);
+            if (nextIndex !== null) {
+              event.preventDefault();
+              const nextRow = listRef.current?.querySelector<HTMLElement>(
+                `[data-file-index="${nextIndex}"]`,
+              );
+              nextRow?.focus();
+              if (event.shiftKey || !hasPrimaryShortcutModifier(event.nativeEvent)) {
+                onMoveSelection(nextIndex, event);
               }
             }
           }}
           onContextMenu={(event) => {
-            onSelect();
+            onContextSelect();
             event.stopPropagation();
           }}
         >
@@ -664,7 +677,12 @@ function RemoteFileRow({
                 打开目录
               </ContextMenuItem>
               <ContextMenuItem
-                disabled={isBusy || isSelectingDownload || !onDownloadFolder}
+                disabled={
+                  selectedCount > 1 ||
+                  isBusy ||
+                  isSelectingDownload ||
+                  !onDownloadFolder
+                }
                 onSelect={() => onDownloadFolder?.(entry)}
               >
                 <FolderDown />
@@ -677,7 +695,9 @@ function RemoteFileRow({
           <>
             <ContextMenuGroup>
               <ContextMenuItem
-                disabled={isBusy || isSelectingDownload || !onDownload}
+                disabled={
+                  selectedCount > 1 || isBusy || isSelectingDownload || !onDownload
+                }
                 onSelect={() => onDownload?.(entry)}
               >
                 <Download />
@@ -688,7 +708,7 @@ function RemoteFileRow({
           </>
         ) : null}
         <ContextMenuGroup>
-          <ContextMenuItem disabled={isBusy} onSelect={onRename}>
+          <ContextMenuItem disabled={selectedCount > 1 || isBusy} onSelect={onRename}>
             <Pencil />
             重命名…
           </ContextMenuItem>
@@ -708,7 +728,11 @@ function RemoteFileRow({
         </ContextMenuGroup>
         <ContextMenuSeparator />
         <ContextMenuGroup>
-          <ContextMenuItem variant="destructive" disabled={isBusy} onSelect={onDelete}>
+          <ContextMenuItem
+            variant="destructive"
+            disabled={selectedCount > 1 || isBusy}
+            onSelect={onDelete}
+          >
             <Trash2 />
             删除…
           </ContextMenuItem>
@@ -716,6 +740,203 @@ function RemoteFileRow({
       </ContextMenuContent>
     </ContextMenu>
   );
+}
+
+type FilePanelActionsProps = {
+  canMutate: boolean;
+  isConnected: boolean;
+  isLoading: boolean;
+  isSelectingUpload: boolean;
+  isSelectingDownload: boolean;
+  selectedCount: number;
+  selectedEntry: RemoteFileEntry | null;
+  onUpload?: () => void;
+  onUploadFolder?: () => void;
+  onDownload?: (entry: RemoteFileEntry) => void;
+  onDownloadFolder?: (entry: RemoteFileEntry) => void;
+  onCreateDirectory: () => void;
+  onCreateFile: () => void;
+  onRefresh: () => void;
+  onClose?: () => void;
+};
+
+function FilePanelActions({
+  canMutate,
+  isConnected,
+  isLoading,
+  isSelectingUpload,
+  isSelectingDownload,
+  selectedCount,
+  selectedEntry,
+  onUpload,
+  onUploadFolder,
+  onDownload,
+  onDownloadFolder,
+  onCreateDirectory,
+  onCreateFile,
+  onRefresh,
+  onClose,
+}: FilePanelActionsProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const isSelecting = isSelectingUpload || isSelectingDownload;
+  const canDownload =
+    Boolean(selectedEntry) &&
+    !isLoading &&
+    !isSelecting &&
+    (selectedEntry?.kind === "file"
+      ? Boolean(onDownload)
+      : selectedEntry?.kind === "directory"
+        ? Boolean(onDownloadFolder)
+        : false);
+
+  const runAction = (action: () => void) => {
+    setIsOpen(false);
+    action();
+  };
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="文件操作"
+              aria-expanded={isOpen}
+            >
+              <MoreHorizontal />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>文件操作</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="end" className="w-48 p-1">
+        <div className="flex flex-col" aria-label="文件操作">
+          <FilePanelAction
+            icon={Upload}
+            label={isSelectingUpload ? "正在选择文件…" : "上传文件…"}
+            disabled={!isConnected || isLoading || isSelecting || !onUpload}
+            onClick={() => onUpload && runAction(onUpload)}
+          />
+          <FilePanelAction
+            icon={FolderUp}
+            label={isSelectingUpload ? "正在选择文件夹…" : "上传文件夹…"}
+            disabled={!isConnected || isLoading || isSelecting || !onUploadFolder}
+            onClick={() => onUploadFolder && runAction(onUploadFolder)}
+          />
+          <FilePanelAction
+            icon={selectedEntry?.kind === "directory" ? FolderDown : Download}
+            label={
+              isSelectingDownload
+                ? "正在选择保存位置…"
+                : selectedCount > 1
+                  ? `下载所选 ${selectedCount} 项…`
+                  : selectedEntry?.kind === "directory"
+                    ? "下载所选文件夹…"
+                    : "下载所选文件…"
+            }
+            disabled={!canDownload}
+            onClick={() => {
+              if (selectedEntry?.kind === "file" && onDownload) {
+                runAction(() => onDownload(selectedEntry));
+              } else if (selectedEntry?.kind === "directory" && onDownloadFolder) {
+                runAction(() => onDownloadFolder(selectedEntry));
+              }
+            }}
+          />
+          <Separator className="my-1" />
+          <FilePanelAction
+            icon={FolderPlus}
+            label="新建文件夹…"
+            disabled={!canMutate}
+            onClick={() => runAction(onCreateDirectory)}
+          />
+          <FilePanelAction
+            icon={FilePlus2}
+            label="新建文件…"
+            disabled={!canMutate}
+            onClick={() => runAction(onCreateFile)}
+          />
+          <Separator className="my-1" />
+          <FilePanelAction
+            icon={RefreshCw}
+            iconClassName={cn(isLoading && "animate-spin motion-reduce:animate-none")}
+            label={isLoading ? "正在刷新" : "刷新目录"}
+            disabled={!isConnected || isLoading}
+            onClick={() => runAction(onRefresh)}
+          />
+          {onClose ? (
+            <>
+              <Separator className="my-1" />
+              <FilePanelAction
+                icon={X}
+                label="关闭文件面板"
+                onClick={() => runAction(onClose)}
+              />
+            </>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type FilePanelActionProps = {
+  icon: LucideIcon;
+  iconClassName?: string;
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+};
+
+function FilePanelAction({
+  icon: Icon,
+  iconClassName,
+  label,
+  disabled,
+  onClick,
+}: FilePanelActionProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="compact"
+      className="w-full justify-start"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon data-icon="inline-start" className={iconClassName} />
+      {label}
+    </Button>
+  );
+}
+
+function getSelectionModifiers(event: MouseEvent | KeyboardEvent) {
+  return {
+    isRange: event.shiftKey,
+    isAdditive: hasPrimaryShortcutModifier(event.nativeEvent),
+  };
+}
+
+function getKeyboardNavigationIndex(
+  key: string,
+  currentIndex: number,
+  entryCount: number,
+) {
+  switch (key) {
+    case "ArrowUp":
+      return Math.max(0, currentIndex - 1);
+    case "ArrowDown":
+      return Math.min(entryCount - 1, currentIndex + 1);
+    case "Home":
+      return 0;
+    case "End":
+      return entryCount - 1;
+    default:
+      return null;
+  }
 }
 
 function RemoteFileIcon({ kind }: { kind: RemoteFileKind }) {

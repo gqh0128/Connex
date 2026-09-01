@@ -425,9 +425,9 @@ export function AppShell({
                     <ResizablePanel
                       id="files"
                       panelRef={filePanelRef}
-                      defaultSize={320}
-                      minSize={280}
-                      maxSize={520}
+                      defaultSize={360}
+                      minSize={340}
+                      maxSize={600}
                       collapsedSize={0}
                       collapsible
                       groupResizeBehavior="preserve-pixel-size"
