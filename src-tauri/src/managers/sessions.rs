@@ -15,14 +15,16 @@ use crate::domain::sessions::{
     SessionValidationError, StartSessionRequest, TerminalSize,
 };
 use crate::domain::sftp::{
-    LocalDownloadTargetSelection, LocalUploadFileSelection, RemoteDirectory, RemoteDownloadResult,
+    FolderTransferFileSelection, FolderTransferSelection, LocalDownloadTargetSelection,
+    LocalUploadFileSelection, MAX_FOLDER_TRANSFER_FILES, RemoteDirectory, RemoteDownloadResult,
     RemoteFileTransferControl, RemoteFileTransferControlStatus, RemoteFileTransferFinish,
     RemoteFileTransferLifecycle, RemoteFileTransferProgress, RemoteUploadResult,
 };
 use crate::infrastructure::sftp::{
     AuthorizedLocalDownloadTarget, AuthorizedLocalUploadFile, AuthorizedRemoteDownloadFile,
     RemoteFileError, RemoteFileSessionState, RemoteFileTransferRuntime, SharedRemoteFileSession,
-    authorize_local_download_target, authorize_local_upload_file, cleanup_local_download_attempt,
+    authorize_local_download_target, authorize_local_upload_file, authorize_local_upload_folder,
+    cleanup_local_download_attempt, prepare_local_download_folder,
 };
 use crate::infrastructure::ssh::{
     SharedSessionSnapshot, SshConnector, SshSessionEnd, SshSessionRuntime, SshTransportError,
@@ -33,7 +35,7 @@ const HOST_KEY_QUEUE_CAPACITY: usize = 1;
 const REMOTE_FILE_REQUEST_QUEUE_CAPACITY: usize = 4;
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 const MAX_ACTIVE_TRANSFERS: usize = 3;
-const MAX_TRANSFER_ATTACH_BATCH: usize = 1_024;
+const MAX_TRANSFER_ATTACH_BATCH: usize = MAX_FOLDER_TRANSFER_FILES;
 const LOCAL_FILE_CAPABILITY_TTL: Duration = Duration::from_secs(30 * 60);
 const TRANSFER_ATTEMPT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const TRANSFER_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -315,6 +317,87 @@ impl SshSessionManager {
         Ok(selections)
     }
 
+    pub async fn select_local_upload_folder(
+        &self,
+        window: &WebviewWindow,
+        session_id: &str,
+        remote_directory: &str,
+    ) -> Result<Option<FolderTransferSelection>, SessionManagerError> {
+        self.ensure_connected(session_id).await?;
+        let remote_files = self.remote_file_session(session_id).await?;
+        let remote_directory = remote_files
+            .canonicalize_directory_path(remote_directory)
+            .await
+            .map_err(SessionManagerError::from)?;
+        let Some(selected_path) = choose_local_upload_folder(window).await? else {
+            return Ok(None);
+        };
+        let folder = authorize_local_upload_folder(selected_path)
+            .await
+            .map_err(SessionManagerError::from)?;
+        let prepared = remote_files
+            .prepare_upload_folder(&remote_directory, folder)
+            .await
+            .map_err(SessionManagerError::from)?;
+
+        let mut local_files = self.local_files.lock().await;
+        local_files.purge_expired();
+        let mut pending_destinations = HashSet::with_capacity(prepared.files.len());
+        for entry in &prepared.files {
+            let destination = UploadDestination::new(
+                session_id,
+                &entry.remote_directory,
+                &entry.file.metadata().file_name,
+            );
+            if !pending_destinations.insert(destination.clone())
+                || local_files.contains_upload_destination(&destination)
+            {
+                return Err(SessionManagerError::TransferDestinationBusy);
+            }
+        }
+
+        let expires_at = Instant::now() + LOCAL_FILE_CAPABILITY_TTL;
+        let mut selections = Vec::with_capacity(prepared.files.len());
+        for entry in prepared.files {
+            let transfer_id = Uuid::new_v4().to_string();
+            selections.push(FolderTransferFileSelection {
+                transfer_id: transfer_id.clone(),
+                relative_path: entry.relative_path,
+                total_bytes: entry.file.metadata().total_bytes,
+            });
+            local_files.capabilities.insert(
+                transfer_id,
+                LocalFileCapability {
+                    session_id: session_id.to_owned(),
+                    expires_at,
+                    is_attached: false,
+                    is_active: false,
+                    is_revoked: false,
+                    attempt_id: None,
+                    kind: LocalFileCapabilityKind::Upload {
+                        remote_directory: entry.remote_directory,
+                        file: entry.file,
+                    },
+                },
+            );
+        }
+        let transfer_ids = selections
+            .iter()
+            .map(|selection| selection.transfer_id.clone())
+            .collect::<Vec<_>>();
+        drop(local_files);
+        if !transfer_ids.is_empty()
+            && let Err(error) = self.ensure_connected(session_id).await
+        {
+            self.discard_local_file_capabilities(&transfer_ids).await;
+            return Err(error);
+        }
+        Ok(Some(FolderTransferSelection {
+            folder_name: prepared.folder_name,
+            files: selections,
+        }))
+    }
+
     pub async fn select_local_download_target(
         &self,
         window: &WebviewWindow,
@@ -366,6 +449,78 @@ impl SshSessionManager {
         Ok(Some(LocalDownloadTargetSelection {
             transfer_id,
             total_bytes,
+        }))
+    }
+
+    pub async fn select_local_download_folder(
+        &self,
+        window: &WebviewWindow,
+        session_id: &str,
+        remote_path: &str,
+    ) -> Result<Option<FolderTransferSelection>, SessionManagerError> {
+        self.ensure_connected(session_id).await?;
+        let Some(selected_parent) = choose_local_download_folder(window).await? else {
+            return Ok(None);
+        };
+        let remote_files = self.remote_file_session(session_id).await?;
+        let folder = remote_files
+            .authorize_download_folder(remote_path)
+            .await
+            .map_err(SessionManagerError::from)?;
+        let prepared = prepare_local_download_folder(selected_parent, folder)
+            .await
+            .map_err(SessionManagerError::from)?;
+
+        let mut local_files = self.local_files.lock().await;
+        local_files.purge_expired();
+        let mut pending_targets = HashSet::with_capacity(prepared.files.len());
+        for entry in &prepared.files {
+            if !pending_targets.insert(entry.target.path().to_path_buf())
+                || local_files.contains_download_target(entry.target.path())
+            {
+                return Err(SessionManagerError::TransferDestinationBusy);
+            }
+        }
+
+        let expires_at = Instant::now() + LOCAL_FILE_CAPABILITY_TTL;
+        let mut selections = Vec::with_capacity(prepared.files.len());
+        for entry in prepared.files {
+            let transfer_id = Uuid::new_v4().to_string();
+            selections.push(FolderTransferFileSelection {
+                transfer_id: transfer_id.clone(),
+                relative_path: entry.relative_path,
+                total_bytes: entry.source.total_bytes(),
+            });
+            local_files.capabilities.insert(
+                transfer_id,
+                LocalFileCapability {
+                    session_id: session_id.to_owned(),
+                    expires_at,
+                    is_attached: false,
+                    is_active: false,
+                    is_revoked: false,
+                    attempt_id: None,
+                    kind: LocalFileCapabilityKind::Download {
+                        source: entry.source,
+                        target: entry.target,
+                    },
+                },
+            );
+        }
+        let transfer_ids = selections
+            .iter()
+            .map(|selection| selection.transfer_id.clone())
+            .collect::<Vec<_>>();
+        drop(local_files);
+        if !transfer_ids.is_empty()
+            && let Err(error) = self.ensure_connected(session_id).await
+        {
+            self.discard_local_file_capabilities(&transfer_ids).await;
+            return Err(error);
+        }
+        Ok(Some(FolderTransferSelection {
+            folder_name: prepared.folder_name,
+            files: selections,
         }))
     }
 
@@ -1040,6 +1195,41 @@ async fn choose_local_upload_files(
         .collect()
 }
 
+async fn choose_local_upload_folder(
+    window: &WebviewWindow,
+) -> Result<Option<PathBuf>, SessionManagerError> {
+    choose_local_folder(window, "选择要上传的文件夹").await
+}
+
+async fn choose_local_download_folder(
+    window: &WebviewWindow,
+) -> Result<Option<PathBuf>, SessionManagerError> {
+    choose_local_folder(window, "选择文件夹保存位置").await
+}
+
+async fn choose_local_folder(
+    window: &WebviewWindow,
+    title: &'static str,
+) -> Result<Option<PathBuf>, SessionManagerError> {
+    let (selection_sender, selection_receiver) = oneshot::channel();
+    window
+        .dialog()
+        .file()
+        .set_parent(window)
+        .set_title(title)
+        .pick_folder(move |selection| {
+            let _send_result = selection_sender.send(selection);
+        });
+    selection_receiver
+        .await
+        .map_err(|_| SessionManagerError::LocalFileSelectionUnavailable)?
+        .map(|path| {
+            path.into_path()
+                .map_err(|_| SessionManagerError::LocalFileSelectionUnavailable)
+        })
+        .transpose()
+}
+
 async fn choose_local_download_target(
     window: &WebviewWindow,
     default_file_name: &str,
@@ -1314,6 +1504,12 @@ pub enum SessionManagerError {
     InvalidRemoteName,
     InvalidLocalFile,
     InvalidLocalDownloadTarget,
+    InvalidLocalFolder,
+    UnsupportedFolderEntry,
+    UnsupportedLocalFolderName,
+    FolderTransferTooLarge,
+    LocalFolderExists,
+    LocalDirectoryCreateFailed,
     LocalFileSelectionUnavailable,
     LocalFileCapabilityUnavailable,
     LocalFileCapabilityChanged,
@@ -1355,6 +1551,12 @@ impl From<RemoteFileError> for SessionManagerError {
             RemoteFileError::InvalidName => Self::InvalidRemoteName,
             RemoteFileError::InvalidLocalFile => Self::InvalidLocalFile,
             RemoteFileError::InvalidLocalDownloadTarget => Self::InvalidLocalDownloadTarget,
+            RemoteFileError::InvalidLocalFolder => Self::InvalidLocalFolder,
+            RemoteFileError::UnsupportedFolderEntry => Self::UnsupportedFolderEntry,
+            RemoteFileError::UnsupportedLocalFolderName => Self::UnsupportedLocalFolderName,
+            RemoteFileError::FolderTransferTooLarge => Self::FolderTransferTooLarge,
+            RemoteFileError::LocalFolderExists => Self::LocalFolderExists,
+            RemoteFileError::LocalDirectoryCreateFailed => Self::LocalDirectoryCreateFailed,
             RemoteFileError::LocalFileCapabilityChanged => Self::LocalFileCapabilityChanged,
             RemoteFileError::LocalUploadFileChanged => Self::LocalUploadFileChanged,
             RemoteFileError::Unavailable => Self::RemoteFilesUnavailable,
@@ -1390,6 +1592,18 @@ impl std::fmt::Display for SessionManagerError {
             Self::InvalidLocalFile => formatter.write_str("local file is unavailable"),
             Self::InvalidLocalDownloadTarget => {
                 formatter.write_str("local download target is unavailable")
+            }
+            Self::InvalidLocalFolder => formatter.write_str("local folder is unavailable"),
+            Self::UnsupportedFolderEntry => {
+                formatter.write_str("folder contains an unsupported entry")
+            }
+            Self::UnsupportedLocalFolderName => {
+                formatter.write_str("folder contains a name that cannot be created locally")
+            }
+            Self::FolderTransferTooLarge => formatter.write_str("folder transfer is too large"),
+            Self::LocalFolderExists => formatter.write_str("local folder already exists"),
+            Self::LocalDirectoryCreateFailed => {
+                formatter.write_str("local directory creation failed")
             }
             Self::LocalFileSelectionUnavailable => {
                 formatter.write_str("local file selection is unavailable")

@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::sftp::{
-    LocalDownloadTargetSelection, LocalUploadFileSelection, RemoteDirectory, RemoteDownloadResult,
-    RemoteFileEntry, RemoteFileKind, RemoteFileTransferControlStatus, RemoteFileTransferProgress,
+    FolderTransferFileSelection, FolderTransferSelection, LocalDownloadTargetSelection,
+    LocalUploadFileSelection, RemoteDirectory, RemoteDownloadResult, RemoteFileEntry,
+    RemoteFileKind, RemoteFileTransferControlStatus, RemoteFileTransferProgress,
     RemoteUploadResult,
 };
 
@@ -39,6 +40,20 @@ pub struct SelectLocalDownloadTargetInput {
     pub default_file_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectLocalUploadFolderInput {
+    pub session_id: String,
+    pub remote_directory: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectLocalDownloadFolderInput {
+    pub session_id: String,
+    pub remote_path: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalUploadFileSelectionDto {
@@ -69,6 +84,40 @@ impl From<LocalDownloadTargetSelection> for LocalDownloadTargetSelectionDto {
         Self {
             transfer_id: selection.transfer_id,
             total_bytes: selection.total_bytes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderTransferFileSelectionDto {
+    pub transfer_id: String,
+    pub relative_path: String,
+    pub total_bytes: u64,
+}
+
+impl From<FolderTransferFileSelection> for FolderTransferFileSelectionDto {
+    fn from(selection: FolderTransferFileSelection) -> Self {
+        Self {
+            transfer_id: selection.transfer_id,
+            relative_path: selection.relative_path,
+            total_bytes: selection.total_bytes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderTransferSelectionDto {
+    pub folder_name: String,
+    pub files: Vec<FolderTransferFileSelectionDto>,
+}
+
+impl From<FolderTransferSelection> for FolderTransferSelectionDto {
+    fn from(selection: FolderTransferSelection) -> Self {
+        Self {
+            folder_name: selection.folder_name,
+            files: selection.files.into_iter().map(Into::into).collect(),
         }
     }
 }

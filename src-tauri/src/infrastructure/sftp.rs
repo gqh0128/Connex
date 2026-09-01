@@ -13,7 +13,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt
 use tokio::sync::{RwLock, mpsc, watch};
 
 use crate::domain::sftp::{
-    LocalUploadFileMetadata, RemoteDirectory, RemoteDownloadResult, RemoteFileEntry,
+    LocalUploadFileMetadata, MAX_FOLDER_TRANSFER_DEPTH, MAX_FOLDER_TRANSFER_DIRECTORIES,
+    MAX_FOLDER_TRANSFER_FILES, RemoteDirectory, RemoteDownloadResult, RemoteFileEntry,
     RemoteFileKind, RemoteFileTransferControl, RemoteFileTransferLifecycle,
     RemoteFileTransferProgress, RemoteUploadResult,
 };
@@ -66,6 +67,58 @@ pub struct AuthorizedLocalDownloadTarget {
 #[derive(Clone, Debug)]
 pub struct AuthorizedRemoteDownloadFile {
     snapshot: RemoteDownloadFileSnapshot,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreparedUploadFolderFile {
+    pub relative_path: String,
+    pub remote_directory: String,
+    pub file: AuthorizedLocalUploadFile,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreparedUploadFolder {
+    pub folder_name: String,
+    pub files: Vec<PreparedUploadFolderFile>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreparedDownloadFolderFile {
+    pub relative_path: String,
+    pub source: AuthorizedRemoteDownloadFile,
+    pub target: AuthorizedLocalDownloadTarget,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreparedDownloadFolder {
+    pub folder_name: String,
+    pub files: Vec<PreparedDownloadFolderFile>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AuthorizedLocalUploadFolder {
+    folder_name: String,
+    directories: Vec<Vec<String>>,
+    files: Vec<AuthorizedLocalUploadFolderFile>,
+}
+
+#[derive(Clone, Debug)]
+struct AuthorizedLocalUploadFolderFile {
+    relative_components: Vec<String>,
+    file: AuthorizedLocalUploadFile,
+}
+
+#[derive(Clone, Debug)]
+pub struct AuthorizedRemoteDownloadFolder {
+    folder_name: String,
+    directories: Vec<Vec<String>>,
+    files: Vec<AuthorizedRemoteDownloadFolderFile>,
+}
+
+#[derive(Clone, Debug)]
+struct AuthorizedRemoteDownloadFolderFile {
+    relative_components: Vec<String>,
+    source: AuthorizedRemoteDownloadFile,
 }
 
 impl AuthorizedRemoteDownloadFile {
@@ -135,6 +188,77 @@ pub async fn authorize_local_upload_file(
             total_bytes: snapshot.length,
         },
         snapshot,
+    })
+}
+
+pub async fn authorize_local_upload_folder(
+    selected_path: PathBuf,
+) -> Result<AuthorizedLocalUploadFolder, RemoteFileError> {
+    let selected_metadata = fs::symlink_metadata(&selected_path)
+        .await
+        .map_err(|_| RemoteFileError::InvalidLocalFolder)?;
+    if !selected_metadata.file_type().is_dir() {
+        return Err(RemoteFileError::InvalidLocalFolder);
+    }
+    let root_path = fs::canonicalize(selected_path)
+        .await
+        .map_err(|_| RemoteFileError::InvalidLocalFolder)?;
+    let folder_name = local_component_name(&root_path, RemoteFileError::InvalidLocalFolder)?;
+
+    let mut directories = Vec::new();
+    let mut files = Vec::new();
+    let mut pending = vec![(root_path, Vec::<String>::new())];
+    while let Some((directory_path, relative_components)) = pending.pop() {
+        let mut entries = fs::read_dir(&directory_path)
+            .await
+            .map_err(|_| RemoteFileError::InvalidLocalFolder)?;
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|_| RemoteFileError::InvalidLocalFolder)?
+        {
+            let file_type = entry
+                .file_type()
+                .await
+                .map_err(|_| RemoteFileError::InvalidLocalFolder)?;
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| RemoteFileError::InvalidLocalFolder)?;
+            validate_remote_file_name(&name).map_err(|_| RemoteFileError::InvalidLocalFolder)?;
+            let mut child_components = relative_components.clone();
+            child_components.push(name);
+            if child_components.len() > MAX_FOLDER_TRANSFER_DEPTH {
+                return Err(RemoteFileError::FolderTransferTooLarge);
+            }
+
+            if file_type.is_dir() {
+                directories.push(child_components.clone());
+                if directories.len() > MAX_FOLDER_TRANSFER_DIRECTORIES {
+                    return Err(RemoteFileError::FolderTransferTooLarge);
+                }
+                pending.push((entry.path(), child_components));
+            } else if file_type.is_file() {
+                let file = authorize_local_upload_file(entry.path()).await?;
+                files.push(AuthorizedLocalUploadFolderFile {
+                    relative_components: child_components,
+                    file,
+                });
+                if files.len() > MAX_FOLDER_TRANSFER_FILES {
+                    return Err(RemoteFileError::FolderTransferTooLarge);
+                }
+            } else {
+                return Err(RemoteFileError::UnsupportedFolderEntry);
+            }
+        }
+    }
+
+    directories.sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
+    files.sort_by(|left, right| left.relative_components.cmp(&right.relative_components));
+    Ok(AuthorizedLocalUploadFolder {
+        folder_name,
+        directories,
+        files,
     })
 }
 
@@ -226,6 +350,148 @@ impl RemoteFileSession {
             .map_err(|_| RemoteFileError::RemoteDownloadUnavailable)?;
         let snapshot = RemoteDownloadFileSnapshot::from_metadata(canonical_path, &metadata)?;
         Ok(AuthorizedRemoteDownloadFile { snapshot })
+    }
+
+    pub async fn authorize_download_folder(
+        &self,
+        path: &str,
+    ) -> Result<AuthorizedRemoteDownloadFolder, RemoteFileError> {
+        validate_remote_path(path)?;
+        let requested_metadata = self
+            .client
+            .symlink_metadata(path)
+            .await
+            .map_err(|_| RemoteFileError::DirectoryUnavailable)?;
+        if !requested_metadata.file_type().is_dir() {
+            return Err(RemoteFileError::DirectoryUnavailable);
+        }
+        let root_path = self
+            .client
+            .canonicalize(path)
+            .await
+            .map_err(|_| RemoteFileError::DirectoryUnavailable)?;
+        validate_remote_path(&root_path)?;
+        let folder_name = remote_file_name(&root_path)?;
+        validate_local_download_component(&folder_name)?;
+
+        let mut directories = Vec::new();
+        let mut files = Vec::new();
+        let mut pending = vec![(root_path, Vec::<String>::new())];
+        while let Some((directory_path, relative_components)) = pending.pop() {
+            let entries = self
+                .client
+                .read_dir(directory_path.clone())
+                .await
+                .map_err(|_| RemoteFileError::DirectoryUnavailable)?;
+            for entry in entries {
+                let name = entry.file_name();
+                validate_remote_file_name(&name)?;
+                validate_local_download_component(&name)?;
+                let child_path = join_remote_path(&directory_path, &name);
+                let mut child_components = relative_components.clone();
+                child_components.push(name);
+                if child_components.len() > MAX_FOLDER_TRANSFER_DEPTH {
+                    return Err(RemoteFileError::FolderTransferTooLarge);
+                }
+
+                match entry.file_type() {
+                    FileType::Dir => {
+                        directories.push(child_components.clone());
+                        if directories.len() > MAX_FOLDER_TRANSFER_DIRECTORIES {
+                            return Err(RemoteFileError::FolderTransferTooLarge);
+                        }
+                        pending.push((child_path, child_components));
+                    }
+                    FileType::File => {
+                        let snapshot = RemoteDownloadFileSnapshot::from_metadata(
+                            child_path,
+                            &entry.metadata(),
+                        )?;
+                        files.push(AuthorizedRemoteDownloadFolderFile {
+                            relative_components: child_components,
+                            source: AuthorizedRemoteDownloadFile { snapshot },
+                        });
+                        if files.len() > MAX_FOLDER_TRANSFER_FILES {
+                            return Err(RemoteFileError::FolderTransferTooLarge);
+                        }
+                    }
+                    FileType::Symlink | FileType::Other => {
+                        return Err(RemoteFileError::UnsupportedFolderEntry);
+                    }
+                }
+            }
+        }
+
+        directories
+            .sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
+        files.sort_by(|left, right| left.relative_components.cmp(&right.relative_components));
+        Ok(AuthorizedRemoteDownloadFolder {
+            folder_name,
+            directories,
+            files,
+        })
+    }
+
+    pub async fn prepare_upload_folder(
+        &self,
+        parent_path: &str,
+        folder: AuthorizedLocalUploadFolder,
+    ) -> Result<PreparedUploadFolder, RemoteFileError> {
+        let parent_path = self
+            .client
+            .canonicalize(parent_path)
+            .await
+            .map_err(|_| RemoteFileError::DirectoryUnavailable)?;
+        let root_path = join_remote_path(&parent_path, &folder.folder_name);
+        if self
+            .client
+            .try_exists(root_path.clone())
+            .await
+            .map_err(|_| RemoteFileError::CreateFailed)?
+        {
+            return Err(RemoteFileError::EntryExists);
+        }
+
+        self.client
+            .create_dir(root_path.clone())
+            .await
+            .map_err(|_| RemoteFileError::CreateFailed)?;
+        let mut created_directories = vec![root_path.clone()];
+        for relative_components in &folder.directories {
+            let path = join_remote_components(&root_path, relative_components);
+            if self.client.create_dir(path.clone()).await.is_err() {
+                self.rollback_remote_directories(&created_directories).await;
+                return Err(RemoteFileError::CreateFailed);
+            }
+            created_directories.push(path);
+        }
+
+        let files = folder
+            .files
+            .into_iter()
+            .map(|entry| {
+                let parent_components =
+                    &entry.relative_components[..entry.relative_components.len().saturating_sub(1)];
+                PreparedUploadFolderFile {
+                    relative_path: display_folder_path(
+                        &folder.folder_name,
+                        &entry.relative_components,
+                    ),
+                    remote_directory: join_remote_components(&root_path, parent_components),
+                    file: entry.file,
+                }
+            })
+            .collect();
+        Ok(PreparedUploadFolder {
+            folder_name: folder.folder_name,
+            files,
+        })
+    }
+
+    async fn rollback_remote_directories(&self, directories: &[String]) {
+        for path in directories.iter().rev() {
+            let _ = self.client.remove_dir(path).await;
+        }
     }
 
     pub async fn list_directory(
@@ -811,6 +1077,160 @@ impl RemoteFileSession {
     }
 }
 
+pub async fn prepare_local_download_folder(
+    selected_parent: PathBuf,
+    folder: AuthorizedRemoteDownloadFolder,
+) -> Result<PreparedDownloadFolder, RemoteFileError> {
+    let parent_metadata = fs::symlink_metadata(&selected_parent)
+        .await
+        .map_err(|_| RemoteFileError::InvalidLocalDownloadTarget)?;
+    if !parent_metadata.file_type().is_dir() {
+        return Err(RemoteFileError::InvalidLocalDownloadTarget);
+    }
+    let parent_path = fs::canonicalize(selected_parent)
+        .await
+        .map_err(|_| RemoteFileError::InvalidLocalDownloadTarget)?;
+    let root_path = parent_path.join(&folder.folder_name);
+    match fs::symlink_metadata(&root_path).await {
+        Ok(_) => return Err(RemoteFileError::LocalFolderExists),
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(_) => return Err(RemoteFileError::InvalidLocalDownloadTarget),
+    }
+
+    fs::create_dir(&root_path)
+        .await
+        .map_err(|_| RemoteFileError::LocalDirectoryCreateFailed)?;
+    let mut created_directories = vec![root_path.clone()];
+    for relative_components in &folder.directories {
+        let path = join_local_components(&root_path, relative_components);
+        if fs::create_dir(&path).await.is_err() {
+            rollback_local_directories(&created_directories).await;
+            return Err(RemoteFileError::LocalDirectoryCreateFailed);
+        }
+        created_directories.push(path);
+    }
+
+    let mut files = Vec::with_capacity(folder.files.len());
+    for entry in folder.files {
+        let target_path = join_local_components(&root_path, &entry.relative_components);
+        let target = match authorize_local_download_target(target_path).await {
+            Ok(target) => target,
+            Err(error) => {
+                rollback_local_directories(&created_directories).await;
+                return Err(error);
+            }
+        };
+        files.push(PreparedDownloadFolderFile {
+            relative_path: display_folder_path(&folder.folder_name, &entry.relative_components),
+            source: entry.source,
+            target,
+        });
+    }
+    Ok(PreparedDownloadFolder {
+        folder_name: folder.folder_name,
+        files,
+    })
+}
+
+async fn rollback_local_directories(directories: &[PathBuf]) {
+    for path in directories.iter().rev() {
+        let _ = fs::remove_dir(path).await;
+    }
+}
+
+fn local_component_name(path: &Path, error: RemoteFileError) -> Result<String, RemoteFileError> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(error)?
+        .to_owned();
+    validate_remote_file_name(&name).map_err(|_| error)?;
+    Ok(name)
+}
+
+fn remote_file_name(path: &str) -> Result<String, RemoteFileError> {
+    let name = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .ok_or(RemoteFileError::InvalidPath)?;
+    validate_remote_file_name(name)?;
+    Ok(name.to_owned())
+}
+
+fn join_remote_components(root: &str, components: &[String]) -> String {
+    components.iter().fold(root.to_owned(), |path, component| {
+        join_remote_path(&path, component)
+    })
+}
+
+fn join_local_components(root: &Path, components: &[String]) -> PathBuf {
+    components
+        .iter()
+        .fold(root.to_path_buf(), |path, component| path.join(component))
+}
+
+fn display_folder_path(folder_name: &str, components: &[String]) -> String {
+    std::iter::once(folder_name)
+        .chain(components.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn validate_local_download_component(name: &str) -> Result<(), RemoteFileError> {
+    let mut components = Path::new(name).components();
+    if name.is_empty()
+        || name.contains(['/', '\\', '\0'])
+        || !matches!(components.next(), Some(std::path::Component::Normal(_)))
+        || components.next().is_some()
+    {
+        return Err(RemoteFileError::UnsupportedLocalFolderName);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let uppercase_stem = name
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
+        let is_reserved = matches!(
+            uppercase_stem.as_str(),
+            "CON"
+                | "PRN"
+                | "AUX"
+                | "NUL"
+                | "COM1"
+                | "COM2"
+                | "COM3"
+                | "COM4"
+                | "COM5"
+                | "COM6"
+                | "COM7"
+                | "COM8"
+                | "COM9"
+                | "LPT1"
+                | "LPT2"
+                | "LPT3"
+                | "LPT4"
+                | "LPT5"
+                | "LPT6"
+                | "LPT7"
+                | "LPT8"
+                | "LPT9"
+        );
+        if name.contains(['<', '>', ':', '"', '|', '?', '*'])
+            || name.chars().any(|character| character.is_control())
+            || name.ends_with([' ', '.'])
+            || is_reserved
+        {
+            return Err(RemoteFileError::UnsupportedLocalFolderName);
+        }
+    }
+
+    Ok(())
+}
+
 async fn open_authorized_local_upload_file(
     authorization: &AuthorizedLocalUploadFile,
 ) -> Result<(LocalFile, LocalUploadFileMetadata), RemoteFileError> {
@@ -1278,6 +1698,12 @@ pub enum RemoteFileError {
     InvalidName,
     InvalidLocalFile,
     InvalidLocalDownloadTarget,
+    InvalidLocalFolder,
+    UnsupportedFolderEntry,
+    UnsupportedLocalFolderName,
+    FolderTransferTooLarge,
+    LocalFolderExists,
+    LocalDirectoryCreateFailed,
     LocalFileCapabilityChanged,
     LocalUploadFileChanged,
     Unavailable,
@@ -1307,6 +1733,18 @@ impl std::fmt::Display for RemoteFileError {
             Self::InvalidLocalFile => formatter.write_str("local file is unavailable"),
             Self::InvalidLocalDownloadTarget => {
                 formatter.write_str("local download target is unavailable")
+            }
+            Self::InvalidLocalFolder => formatter.write_str("local folder is unavailable"),
+            Self::UnsupportedFolderEntry => {
+                formatter.write_str("folder contains an unsupported entry")
+            }
+            Self::UnsupportedLocalFolderName => {
+                formatter.write_str("folder contains a name that cannot be created locally")
+            }
+            Self::FolderTransferTooLarge => formatter.write_str("folder transfer is too large"),
+            Self::LocalFolderExists => formatter.write_str("local folder already exists"),
+            Self::LocalDirectoryCreateFailed => {
+                formatter.write_str("local directory creation failed")
             }
             Self::LocalFileCapabilityChanged => {
                 formatter.write_str("authorized local file changed")

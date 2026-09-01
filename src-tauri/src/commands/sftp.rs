@@ -5,10 +5,11 @@ use tokio::sync::mpsc;
 use crate::managers::sessions::SshSessionManager;
 use crate::models::error::CommandError;
 use crate::models::sftp::{
-    AttachRemoteFileTransfersInput, DownloadRemoteFileInput, LocalDownloadTargetSelectionDto,
-    LocalUploadFileSelectionDto, RemoteDirectoryDto, RemoteDownloadResultDto,
-    RemoteFileTransferControlStatusDto, RemoteFileTransferProgressDto, RemoteUploadResultDto,
-    SelectLocalDownloadTargetInput, SelectLocalUploadFilesInput, UploadRemoteFileInput,
+    AttachRemoteFileTransfersInput, DownloadRemoteFileInput, FolderTransferSelectionDto,
+    LocalDownloadTargetSelectionDto, LocalUploadFileSelectionDto, RemoteDirectoryDto,
+    RemoteDownloadResultDto, RemoteFileTransferControlStatusDto, RemoteFileTransferProgressDto,
+    RemoteUploadResultDto, SelectLocalDownloadFolderInput, SelectLocalDownloadTargetInput,
+    SelectLocalUploadFilesInput, SelectLocalUploadFolderInput, UploadRemoteFileInput,
 };
 
 const TRANSFER_EVENT_QUEUE_CAPACITY: usize = 32;
@@ -91,6 +92,19 @@ pub async fn select_local_upload_files(
 }
 
 #[tauri::command]
+pub async fn select_local_upload_folder(
+    input: SelectLocalUploadFolderInput,
+    window: WebviewWindow,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<Option<FolderTransferSelectionDto>, CommandError> {
+    sessions
+        .select_local_upload_folder(&window, &input.session_id, &input.remote_directory)
+        .await
+        .map(|selection| selection.map(Into::into))
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn select_local_download_target(
     input: SelectLocalDownloadTargetInput,
     window: WebviewWindow,
@@ -103,6 +117,19 @@ pub async fn select_local_download_target(
             &input.remote_path,
             &input.default_file_name,
         )
+        .await
+        .map(|selection| selection.map(Into::into))
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn select_local_download_folder(
+    input: SelectLocalDownloadFolderInput,
+    window: WebviewWindow,
+    sessions: State<'_, SshSessionManager>,
+) -> Result<Option<FolderTransferSelectionDto>, CommandError> {
+    sessions
+        .select_local_download_folder(&window, &input.session_id, &input.remote_path)
         .await
         .map(|selection| selection.map(Into::into))
         .map_err(Into::into)

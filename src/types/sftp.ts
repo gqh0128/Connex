@@ -28,6 +28,11 @@ export type LocalUploadFileSelection = {
   totalBytes: number;
 };
 
+export type SelectLocalUploadFolderInput = {
+  sessionId: string;
+  remoteDirectory: string;
+};
+
 export type DownloadRemoteFileInput = {
   transferId: string;
 };
@@ -41,6 +46,22 @@ export type SelectLocalDownloadTargetInput = {
 export type LocalDownloadTargetSelection = {
   transferId: string;
   totalBytes: number;
+};
+
+export type SelectLocalDownloadFolderInput = {
+  sessionId: string;
+  remotePath: string;
+};
+
+export type FolderTransferFileSelection = {
+  transferId: string;
+  relativePath: string;
+  totalBytes: number;
+};
+
+export type FolderTransferSelection = {
+  folderName: string;
+  files: FolderTransferFileSelection[];
 };
 
 export type AttachRemoteFileTransfersInput = {

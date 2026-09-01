@@ -6,7 +6,9 @@ import {
   cancelRemoteFileTransfer,
   downloadRemoteFile,
   pauseRemoteFileTransfer,
+  selectLocalDownloadFolder,
   selectLocalDownloadTarget,
+  selectLocalUploadFolder,
   selectLocalUploadFiles,
   uploadRemoteFile,
 } from "@/lib/tauri/sftp";
@@ -35,6 +37,8 @@ type StartDownloadInput = {
   connectionName: string;
   entry: RemoteFileEntry;
 };
+
+type StartDownloadFolderInput = StartDownloadInput;
 
 type UploadTransferSpec = {
   direction: "upload";
@@ -433,6 +437,100 @@ export function useFileTransfers() {
     [addPreparedTransfers],
   );
 
+  const selectAndUploadFolder = useCallback(
+    async ({
+      sessionId,
+      connectionName,
+      remoteDirectory,
+      onCompleted,
+    }: StartUploadsInput) => {
+      if (isSelectingLocalPathRef.current) {
+        return;
+      }
+
+      isSelectingLocalPathRef.current = true;
+      setIsSelectingFiles(true);
+      try {
+        const selection = await selectLocalUploadFolder({
+          sessionId,
+          remoteDirectory,
+        });
+        if (!selection) {
+          return;
+        }
+
+        onCompleted();
+        const transferIds = selection.files.map((file) => file.transferId);
+        if (transferIds.length === 0) {
+          const createdAt = Date.now();
+          addPreparedTransfers([
+            {
+              task: createCompletedFolderTask({
+                id: crypto.randomUUID(),
+                direction: "upload",
+                fileName: `${selection.folderName}/`,
+                connectionName,
+                totalBytes: 0,
+                queueOrder: ++queueOrderRef.current,
+                createdAt,
+              }),
+              spec: null,
+            },
+          ]);
+          return;
+        }
+
+        try {
+          await attachRemoteFileTransfers({ transferIds });
+        } catch (error: unknown) {
+          await releaseRemoteFileTransfers(transferIds);
+          throw error;
+        }
+        addPreparedTransfers(
+          selection.files.map((file): PreparedTransfer => {
+            const createdAt = Date.now();
+            return {
+              task: createTransferTask({
+                id: file.transferId,
+                direction: "upload",
+                fileName: file.relativePath,
+                connectionName,
+                totalBytes: file.totalBytes,
+                queueOrder: ++queueOrderRef.current,
+                createdAt,
+              }),
+              spec: {
+                direction: "upload",
+                sessionId,
+                onCompleted: () => undefined,
+              },
+            };
+          }),
+        );
+      } catch (error: unknown) {
+        const createdAt = Date.now();
+        addPreparedTransfers([
+          {
+            task: createFailedSelectionTask({
+              id: crypto.randomUUID(),
+              direction: "upload",
+              fileName: "选择本地文件夹",
+              connectionName,
+              commandError: getCommandError(error),
+              queueOrder: ++queueOrderRef.current,
+              createdAt,
+            }),
+            spec: null,
+          },
+        ]);
+      } finally {
+        isSelectingLocalPathRef.current = false;
+        setIsSelectingFiles(false);
+      }
+    },
+    [addPreparedTransfers],
+  );
+
   const selectAndDownload = useCallback(
     async ({ sessionId, connectionName, entry }: StartDownloadInput) => {
       if (entry.kind !== "file" || isSelectingLocalPathRef.current) {
@@ -477,6 +575,93 @@ export function useFileTransfers() {
             },
           },
         ]);
+      } catch (error: unknown) {
+        const createdAt = Date.now();
+        addPreparedTransfers([
+          {
+            task: createFailedSelectionTask({
+              id: crypto.randomUUID(),
+              direction: "download",
+              fileName: entry.name,
+              connectionName,
+              commandError: getCommandError(error),
+              queueOrder: ++queueOrderRef.current,
+              createdAt,
+            }),
+            spec: null,
+          },
+        ]);
+      } finally {
+        isSelectingLocalPathRef.current = false;
+        setIsSelectingDownload(false);
+      }
+    },
+    [addPreparedTransfers],
+  );
+
+  const selectAndDownloadFolder = useCallback(
+    async ({ sessionId, connectionName, entry }: StartDownloadFolderInput) => {
+      if (entry.kind !== "directory" || isSelectingLocalPathRef.current) {
+        return;
+      }
+
+      isSelectingLocalPathRef.current = true;
+      setIsSelectingDownload(true);
+      try {
+        const selection = await selectLocalDownloadFolder({
+          sessionId,
+          remotePath: entry.path,
+        });
+        if (!selection) {
+          return;
+        }
+
+        const transferIds = selection.files.map((file) => file.transferId);
+        if (transferIds.length === 0) {
+          const createdAt = Date.now();
+          addPreparedTransfers([
+            {
+              task: createCompletedFolderTask({
+                id: crypto.randomUUID(),
+                direction: "download",
+                fileName: `${selection.folderName}/`,
+                connectionName,
+                totalBytes: 0,
+                queueOrder: ++queueOrderRef.current,
+                createdAt,
+              }),
+              spec: null,
+            },
+          ]);
+          return;
+        }
+
+        try {
+          await attachRemoteFileTransfers({ transferIds });
+        } catch (error: unknown) {
+          await releaseRemoteFileTransfers(transferIds);
+          throw error;
+        }
+        addPreparedTransfers(
+          selection.files.map((file): PreparedTransfer => {
+            const createdAt = Date.now();
+            return {
+              task: createTransferTask({
+                id: file.transferId,
+                direction: "download",
+                fileName: file.relativePath,
+                connectionName,
+                totalBytes: file.totalBytes,
+                queueOrder: ++queueOrderRef.current,
+                createdAt,
+              }),
+              spec: {
+                direction: "download",
+                sessionId,
+              },
+            };
+          }),
+        );
       } catch (error: unknown) {
         const createdAt = Date.now();
         addPreparedTransfers([
@@ -979,7 +1164,9 @@ export function useFileTransfers() {
     isSelectingFiles,
     isSelectingDownload,
     selectAndUpload,
+    selectAndUploadFolder,
     selectAndDownload,
+    selectAndDownloadFolder,
     pauseTransfer,
     resumeTransfer,
     cancelTransfer,
@@ -1020,6 +1207,15 @@ function createTransferTask(input: CreateTransferTaskInput): FileTransferTask {
     errorMessage: null,
     startedAt: null,
     finishedAt: null,
+  };
+}
+
+function createCompletedFolderTask(input: CreateTransferTaskInput): FileTransferTask {
+  return {
+    ...createTransferTask(input),
+    status: "completed",
+    transferredBytes: input.totalBytes ?? 0,
+    finishedAt: Date.now(),
   };
 }
 

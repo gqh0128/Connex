@@ -3,6 +3,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AttachRemoteFileTransfersInput,
   DownloadRemoteFileInput,
+  FolderTransferSelection,
   LocalDownloadTargetSelection,
   LocalUploadFileSelection,
   RemoteDirectory,
@@ -11,6 +12,8 @@ import type {
   RemoteFileTransferProgress,
   RemoteUploadResult,
   SelectLocalDownloadTargetInput,
+  SelectLocalDownloadFolderInput,
+  SelectLocalUploadFolderInput,
   SelectLocalUploadFilesInput,
   UploadRemoteFileInput,
 } from "@/types/sftp";
@@ -21,7 +24,9 @@ const CREATE_REMOTE_FILE_COMMAND = "create_remote_file";
 const RENAME_REMOTE_ENTRY_COMMAND = "rename_remote_entry";
 const DELETE_REMOTE_ENTRY_COMMAND = "delete_remote_entry";
 const SELECT_LOCAL_UPLOAD_FILES_COMMAND = "select_local_upload_files";
+const SELECT_LOCAL_UPLOAD_FOLDER_COMMAND = "select_local_upload_folder";
 const SELECT_LOCAL_DOWNLOAD_TARGET_COMMAND = "select_local_download_target";
+const SELECT_LOCAL_DOWNLOAD_FOLDER_COMMAND = "select_local_download_folder";
 const ATTACH_REMOTE_FILE_TRANSFERS_COMMAND = "attach_remote_file_transfers";
 const UPLOAD_REMOTE_FILE_COMMAND = "upload_remote_file";
 const DOWNLOAD_REMOTE_FILE_COMMAND = "download_remote_file";
@@ -73,11 +78,23 @@ export function selectLocalUploadFiles(input: SelectLocalUploadFilesInput) {
   });
 }
 
+export function selectLocalUploadFolder(input: SelectLocalUploadFolderInput) {
+  return invoke<FolderTransferSelection | null>(SELECT_LOCAL_UPLOAD_FOLDER_COMMAND, {
+    input,
+  });
+}
+
 export function selectLocalDownloadTarget(input: SelectLocalDownloadTargetInput) {
   return invoke<LocalDownloadTargetSelection | null>(
     SELECT_LOCAL_DOWNLOAD_TARGET_COMMAND,
     { input },
   );
+}
+
+export function selectLocalDownloadFolder(input: SelectLocalDownloadFolderInput) {
+  return invoke<FolderTransferSelection | null>(SELECT_LOCAL_DOWNLOAD_FOLDER_COMMAND, {
+    input,
+  });
 }
 
 export function attachRemoteFileTransfers(input: AttachRemoteFileTransfersInput) {

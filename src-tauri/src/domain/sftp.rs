@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+pub const MAX_FOLDER_TRANSFER_FILES: usize = 1_024;
+pub const MAX_FOLDER_TRANSFER_DIRECTORIES: usize = 4_096;
+pub const MAX_FOLDER_TRANSFER_DEPTH: usize = 64;
+
 const TRANSFER_PHASE_RUNNING: u8 = 0;
 const TRANSFER_PHASE_PAUSE_REQUESTED: u8 = 1;
 const TRANSFER_PHASE_CANCEL_REQUESTED: u8 = 2;
@@ -47,6 +51,19 @@ pub struct LocalUploadFileSelection {
 pub struct LocalDownloadTargetSelection {
     pub transfer_id: String,
     pub total_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FolderTransferFileSelection {
+    pub transfer_id: String,
+    pub relative_path: String,
+    pub total_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FolderTransferSelection {
+    pub folder_name: String,
+    pub files: Vec<FolderTransferFileSelection>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

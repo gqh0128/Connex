@@ -155,6 +155,30 @@ export function AppShell({
     });
   }, [activeSession, fileTransfers, remoteFiles.directory?.path]);
 
+  const uploadFolder = useCallback(() => {
+    const session = activeSession;
+    const remoteDirectory = remoteFiles.directory?.path;
+    if (!session || session.state !== "connected" || !remoteDirectory) {
+      return;
+    }
+
+    const sessionId = session.id;
+    void fileTransfers.selectAndUploadFolder({
+      sessionId,
+      connectionName: session.connectionName,
+      remoteDirectory,
+      onCompleted: () => {
+        const currentRemoteFiles = remoteFilesRef.current;
+        if (
+          activeSessionIdRef.current === sessionId &&
+          currentRemoteFiles.directory?.path === remoteDirectory
+        ) {
+          currentRemoteFiles.refresh();
+        }
+      },
+    });
+  }, [activeSession, fileTransfers, remoteFiles.directory?.path]);
+
   const downloadFile = useCallback(
     (entry: RemoteFileEntry) => {
       const session = activeSession;
@@ -163,6 +187,22 @@ export function AppShell({
       }
 
       void fileTransfers.selectAndDownload({
+        sessionId: session.id,
+        connectionName: session.connectionName,
+        entry,
+      });
+    },
+    [activeSession, fileTransfers],
+  );
+
+  const downloadFolder = useCallback(
+    (entry: RemoteFileEntry) => {
+      const session = activeSession;
+      if (!session || session.state !== "connected" || entry.kind !== "directory") {
+        return;
+      }
+
+      void fileTransfers.selectAndDownloadFolder({
         sessionId: session.id,
         connectionName: session.connectionName,
         entry,
@@ -403,7 +443,9 @@ export function AppShell({
                           isSelectingUpload={fileTransfers.isSelectingFiles}
                           isSelectingDownload={fileTransfers.isSelectingDownload}
                           onUpload={uploadFiles}
+                          onUploadFolder={uploadFolder}
                           onDownload={downloadFile}
+                          onDownloadFolder={downloadFolder}
                         />
                       </div>
                     </ResizablePanel>
@@ -457,7 +499,9 @@ export function AppShell({
             isSelectingUpload={fileTransfers.isSelectingFiles}
             isSelectingDownload={fileTransfers.isSelectingDownload}
             onUpload={uploadFiles}
+            onUploadFolder={uploadFolder}
             onDownload={downloadFile}
+            onDownloadFolder={downloadFolder}
             className="h-full border-l-0"
             onClose={() => onFilePanelOpenChange(false)}
           />

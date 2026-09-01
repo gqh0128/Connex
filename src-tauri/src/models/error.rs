@@ -136,6 +136,36 @@ impl From<SessionManagerError> for CommandError {
                 message: "无法使用这个保存位置，请检查目录是否仍然存在以及写入权限。",
                 field: None,
             },
+            SessionManagerError::InvalidLocalFolder => Self {
+                code: "local_folder_unavailable",
+                message: "无法读取这个本地文件夹，请检查它是否仍然存在以及访问权限。",
+                field: None,
+            },
+            SessionManagerError::UnsupportedFolderEntry => Self {
+                code: "unsupported_folder_entry",
+                message: "文件夹中包含符号链接或特殊文件，Connex 不会递归跟随这类内容。",
+                field: None,
+            },
+            SessionManagerError::UnsupportedLocalFolderName => Self {
+                code: "unsupported_local_folder_name",
+                message: "远程文件夹中包含无法在本机安全创建的名称，请调整名称后重试。",
+                field: None,
+            },
+            SessionManagerError::FolderTransferTooLarge => Self {
+                code: "folder_transfer_too_large",
+                message: "单次文件夹传输最多支持 1024 个文件、4096 个目录和 64 层深度。",
+                field: None,
+            },
+            SessionManagerError::LocalFolderExists => Self {
+                code: "local_folder_exists",
+                message: "所选位置已经存在同名文件夹，Connex 没有合并或覆盖它。",
+                field: None,
+            },
+            SessionManagerError::LocalDirectoryCreateFailed => Self {
+                code: "local_directory_create_failed",
+                message: "无法创建本地目录，请检查保存位置权限和可用空间。",
+                field: None,
+            },
             SessionManagerError::LocalFileSelectionUnavailable => Self {
                 code: "local_file_selection_unavailable",
                 message: "系统文件选择器暂时不可用，请稍后重试。",

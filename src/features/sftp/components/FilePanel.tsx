@@ -11,7 +11,9 @@ import {
   FileSymlink,
   Folder,
   FolderOpen,
+  FolderDown,
   FolderPlus,
+  FolderUp,
   LoaderCircle,
   MoreHorizontal,
   Pencil,
@@ -63,7 +65,9 @@ type FilePanelProps = {
   isSelectingUpload?: boolean;
   isSelectingDownload?: boolean;
   onUpload?: () => void;
+  onUploadFolder?: () => void;
   onDownload?: (entry: RemoteFileEntry) => void;
+  onDownloadFolder?: (entry: RemoteFileEntry) => void;
   className?: string;
   onClose?: () => void;
 };
@@ -84,7 +88,9 @@ function ScopedFilePanel({
   isSelectingUpload = false,
   isSelectingDownload = false,
   onUpload,
+  onUploadFolder,
   onDownload,
+  onDownloadFolder,
   className,
   onClose,
 }: FilePanelProps) {
@@ -95,6 +101,8 @@ function ScopedFilePanel({
   const selectedEntry =
     directory?.entries.find((entry) => entry.path === selectedPath) ?? null;
   const selectedFile = selectedEntry?.kind === "file" ? selectedEntry : null;
+  const selectedFolder = selectedEntry?.kind === "directory" ? selectedEntry : null;
+  const selectedDownloadEntry = selectedFile ?? selectedFolder;
   const canMutate = isConnected && Boolean(directory) && !isLoading;
 
   return (
@@ -123,20 +131,41 @@ function ScopedFilePanel({
                   onClick={onUpload}
                 />
                 <PanelButton
-                  label={isSelectingDownload ? "正在选择保存位置" : "下载文件"}
-                  icon={Download}
+                  label={isSelectingUpload ? "正在选择文件夹" : "上传文件夹"}
+                  icon={FolderUp}
                   disabled={
                     !isConnected ||
-                    !selectedFile ||
+                    !directory ||
                     isLoading ||
                     isSelectingUpload ||
                     isSelectingDownload ||
-                    !onDownload
+                    !onUploadFolder
+                  }
+                  onClick={onUploadFolder}
+                />
+                <PanelButton
+                  label={
+                    isSelectingDownload
+                      ? "正在选择保存位置"
+                      : selectedFolder
+                        ? "下载文件夹"
+                        : "下载文件"
+                  }
+                  icon={selectedFolder ? FolderDown : Download}
+                  disabled={
+                    !isConnected ||
+                    !selectedDownloadEntry ||
+                    isLoading ||
+                    isSelectingUpload ||
+                    isSelectingDownload ||
+                    (selectedFile ? !onDownload : !onDownloadFolder)
                   }
                   onClick={
                     selectedFile && onDownload
                       ? () => onDownload(selectedFile)
-                      : undefined
+                      : selectedFolder && onDownloadFolder
+                        ? () => onDownloadFolder(selectedFolder)
+                        : undefined
                   }
                 />
                 <PanelButton
@@ -185,6 +214,7 @@ function ScopedFilePanel({
               isSelectingDownload={isSelectingUpload || isSelectingDownload}
               onSelectedPathChange={setSelectedPath}
               onDownload={onDownload}
+              onDownloadFolder={onDownloadFolder}
               onRename={setNameAction}
               onDelete={setDeletingEntry}
             />
@@ -230,6 +260,20 @@ function ScopedFilePanel({
             >
               <Upload />
               上传文件…
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={
+                !isConnected ||
+                !directory ||
+                isLoading ||
+                isSelectingUpload ||
+                isSelectingDownload ||
+                !onUploadFolder
+              }
+              onSelect={onUploadFolder}
+            >
+              <FolderUp />
+              上传文件夹…
             </ContextMenuItem>
             <ContextMenuItem
               disabled={!isConnected || isLoading}
@@ -288,6 +332,7 @@ type FilePanelContentProps = {
   isSelectingDownload: boolean;
   onSelectedPathChange: (path: string) => void;
   onDownload?: (entry: RemoteFileEntry) => void;
+  onDownloadFolder?: (entry: RemoteFileEntry) => void;
   onRename: (action: RemoteEntryNameAction) => void;
   onDelete: (entry: RemoteFileEntry) => void;
 };
@@ -299,6 +344,7 @@ function FilePanelContent({
   isSelectingDownload,
   onSelectedPathChange,
   onDownload,
+  onDownloadFolder,
   onRename,
   onDelete,
 }: FilePanelContentProps) {
@@ -382,6 +428,7 @@ function FilePanelContent({
             onSelect={() => onSelectedPathChange(entry.path)}
             onOpenDirectory={browser.openDirectory}
             onDownload={onDownload}
+            onDownloadFolder={onDownloadFolder}
             onRename={() => onRename({ type: "rename", entry })}
             onDelete={() => onDelete(entry)}
             onRefresh={browser.refresh}
@@ -535,6 +582,7 @@ type RemoteFileRowProps = {
   onSelect: () => void;
   onOpenDirectory: (path: string) => void;
   onDownload?: (entry: RemoteFileEntry) => void;
+  onDownloadFolder?: (entry: RemoteFileEntry) => void;
   onRename: () => void;
   onDelete: () => void;
   onRefresh: () => void;
@@ -548,6 +596,7 @@ function RemoteFileRow({
   onSelect,
   onOpenDirectory,
   onDownload,
+  onDownloadFolder,
   onRename,
   onDelete,
   onRefresh,
@@ -613,6 +662,13 @@ function RemoteFileRow({
               <ContextMenuItem onSelect={() => onOpenDirectory(entry.path)}>
                 <FolderOpen />
                 打开目录
+              </ContextMenuItem>
+              <ContextMenuItem
+                disabled={isBusy || isSelectingDownload || !onDownloadFolder}
+                onSelect={() => onDownloadFolder?.(entry)}
+              >
+                <FolderDown />
+                下载到…
               </ContextMenuItem>
             </ContextMenuGroup>
             <ContextMenuSeparator />
