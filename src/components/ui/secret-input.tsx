@@ -16,6 +16,7 @@ type SecretInputProps = {
   secretLabel: string;
   ariaInvalid: boolean;
   disabled?: boolean;
+  size?: "default" | "sm";
   autoComplete?: string;
   onChange: (value: string) => void;
   onRevealStored?: () => Promise<string | null>;
@@ -28,6 +29,7 @@ export function SecretInput({
   secretLabel,
   ariaInvalid,
   disabled = false,
+  size = "default",
   autoComplete = "new-password",
   onChange,
   onRevealStored,
@@ -81,7 +83,7 @@ export function SecretInput({
   const Icon = isVisible ? EyeOff : Eye;
 
   return (
-    <InputGroup data-disabled={disabled}>
+    <InputGroup size={size} data-disabled={disabled}>
       <InputGroupInput
         id={id}
         type={isVisible ? "text" : "password"}

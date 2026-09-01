@@ -37,7 +37,7 @@ export function ConnectionBackupSettings({
 
         <div className="overflow-hidden rounded-lg border bg-surface">
           <FieldGroup className="gap-0">
-            <Field orientation="responsive" className="p-5">
+            <Field orientation="responsive" className="p-4">
               <FieldContent>
                 <FieldTitle>导入与导出</FieldTitle>
                 <FieldDescription>

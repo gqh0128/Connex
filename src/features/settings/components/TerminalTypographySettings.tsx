@@ -83,7 +83,6 @@ export function TerminalTypographySettings({
         maxLength={3}
         inputMode="numeric"
         suffix={getTerminalFontWeightLabel(appPreferences.terminalFontWeight)}
-        suffixWidth="wide"
         isDisabled={isAppPreferencesLoading}
         externalError={appPreferencesError}
         isDraftAllowed={(draft) => /^\d{0,3}$/u.test(draft)}
@@ -155,7 +154,7 @@ export function TerminalTypographySettings({
 
       <Field
         orientation="horizontal"
-        className="p-5"
+        className="p-4"
         data-disabled={isShortcutsDisabled}
         data-invalid={Boolean(displayedShortcutsError)}
       >

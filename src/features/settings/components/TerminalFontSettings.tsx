@@ -130,7 +130,7 @@ export function TerminalFontSettings({
     <>
       <Field
         orientation="responsive"
-        className="p-5"
+        className="p-4"
         data-disabled={isDisabled}
         data-invalid={Boolean(displayedError)}
       >

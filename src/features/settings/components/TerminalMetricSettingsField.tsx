@@ -16,7 +16,6 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { getCommandError } from "@/lib/tauri/errors";
-import { cn } from "@/lib/utils";
 
 type MetricDirection = "increase" | "decrease";
 
@@ -30,7 +29,6 @@ type TerminalMetricSettingsFieldProps = {
   maxLength: number;
   inputMode: "numeric" | "decimal";
   suffix: ReactNode;
-  suffixWidth?: "compact" | "wide";
   isDisabled: boolean;
   externalError: string | null;
   isDraftAllowed: (draft: string) => boolean;
@@ -50,7 +48,6 @@ export function TerminalMetricSettingsField({
   maxLength,
   inputMode,
   suffix,
-  suffixWidth = "compact",
   isDisabled,
   externalError,
   isDraftAllowed,
@@ -100,7 +97,7 @@ export function TerminalMetricSettingsField({
   return (
     <Field
       orientation="responsive"
-      className="p-5"
+      className="p-4"
       data-disabled={isDisabled}
       data-invalid={Boolean(displayedError)}
     >
@@ -110,61 +107,60 @@ export function TerminalMetricSettingsField({
         <FieldError>{displayedError}</FieldError>
       </FieldContent>
 
-      <InputGroup size="sm" className="w-48" data-disabled={isDisabled}>
-        <InputGroupAddon>
-          <InputGroupButton
-            size="icon-xs"
-            disabled={isDisabled || value <= min}
-            aria-label={`减小${label}`}
-            onClick={() => void save(adjust(value, "decrease"))}
-          >
-            <Minus data-icon="inline-start" />
-          </InputGroupButton>
-        </InputGroupAddon>
-        <InputGroupInput
-          id={id}
-          type="text"
-          inputMode={inputMode}
-          maxLength={maxLength}
-          value={draft}
-          disabled={isDisabled}
-          aria-invalid={Boolean(displayedError)}
-          aria-describedby={descriptionId}
-          className="text-center"
-          onChange={(event) => {
-            if (isDraftAllowed(event.target.value)) {
-              setDraft(event.target.value);
-            }
-          }}
-          onBlur={saveDraft}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            } else if (event.key === "Escape") {
-              setDraft(format(value));
-              event.currentTarget.blur();
-            }
-          }}
-        />
-        <InputGroupAddon align="inline-end">
-          <InputGroupText
-            className={cn(
-              "shrink-0 justify-center truncate",
-              suffixWidth === "wide" ? "w-16" : "w-8",
-            )}
-          >
-            {suffix}
-          </InputGroupText>
-          <InputGroupButton
-            size="icon-xs"
-            disabled={isDisabled || value >= max}
-            aria-label={`增大${label}`}
-            onClick={() => void save(adjust(value, "increase"))}
-          >
-            <Plus data-icon="inline-start" />
-          </InputGroupButton>
-        </InputGroupAddon>
-      </InputGroup>
+      <div className="w-36 shrink-0">
+        <InputGroup size="sm" data-disabled={isDisabled}>
+          <InputGroupAddon>
+            <InputGroupButton
+              size="icon-xs"
+              disabled={isDisabled || value <= min}
+              aria-label={`减小${label}`}
+              onClick={() => void save(adjust(value, "decrease"))}
+            >
+              <Minus data-icon="inline-start" />
+            </InputGroupButton>
+          </InputGroupAddon>
+          <div className="w-10 shrink-0">
+            <InputGroupInput
+              id={id}
+              type="text"
+              inputMode={inputMode}
+              maxLength={maxLength}
+              value={draft}
+              disabled={isDisabled}
+              aria-invalid={Boolean(displayedError)}
+              aria-describedby={descriptionId}
+              className="px-1 text-center"
+              onChange={(event) => {
+                if (isDraftAllowed(event.target.value)) {
+                  setDraft(event.target.value);
+                }
+              }}
+              onBlur={saveDraft}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                } else if (event.key === "Escape") {
+                  setDraft(format(value));
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+          <InputGroupAddon align="inline-end">
+            <InputGroupText className="w-11 shrink-0 justify-center truncate">
+              {suffix}
+            </InputGroupText>
+            <InputGroupButton
+              size="icon-xs"
+              disabled={isDisabled || value >= max}
+              aria-label={`增大${label}`}
+              onClick={() => void save(adjust(value, "increase"))}
+            >
+              <Plus data-icon="inline-start" />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </div>
     </Field>
   );
 }

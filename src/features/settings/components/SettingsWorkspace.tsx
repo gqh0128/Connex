@@ -121,7 +121,7 @@ export function SettingsWorkspace({
 
   return (
     <ScrollArea className="h-full min-h-0 bg-workspace">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-8 py-10">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-8">
         <header className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold tracking-tight">设置</h1>
           <p className="text-sm text-muted-foreground">
@@ -138,7 +138,7 @@ export function SettingsWorkspace({
             <FieldGroup className="gap-0">
               <Field
                 orientation="horizontal"
-                className="p-5"
+                className="p-4"
                 data-disabled={isExitPreferenceDisabled}
                 data-invalid={Boolean(displayedExitPreferenceError)}
               >
@@ -175,7 +175,7 @@ export function SettingsWorkspace({
 
           <div className="overflow-hidden rounded-lg border bg-surface">
             <FieldGroup className="gap-0">
-              <Field orientation="responsive" className="p-5">
+              <Field orientation="responsive" className="p-4">
                 <FieldContent>
                   <FieldTitle id="theme-mode-label">界面主题</FieldTitle>
                   <FieldDescription>
@@ -213,7 +213,7 @@ export function SettingsWorkspace({
               <Separator />
 
               <Field
-                className="p-5"
+                className="p-4"
                 data-disabled={isColorSchemeDisabled}
                 data-invalid={Boolean(displayedColorSchemeError)}
               >
@@ -227,12 +227,13 @@ export function SettingsWorkspace({
                 <ToggleGroup
                   type="single"
                   variant="outline"
-                  spacing={2}
+                  size="sm"
+                  spacing={1}
                   value={colorSchemeId}
                   disabled={isColorSchemeDisabled}
                   aria-labelledby="color-scheme-label"
                   aria-invalid={Boolean(displayedColorSchemeError)}
-                  className="grid w-full grid-cols-2 sm:grid-cols-3"
+                  className="grid w-fit grid-cols-2 sm:grid-cols-3"
                   onValueChange={(value) => {
                     if (isColorSchemeId(value) && value !== colorSchemeId) {
                       void updateColorScheme(value);
@@ -245,7 +246,7 @@ export function SettingsWorkspace({
                       value={scheme.id}
                       aria-label={scheme.label}
                       title={scheme.description}
-                      className="h-10 w-full justify-start"
+                      className="w-32 justify-start"
                     >
                       <span
                         className="color-scheme-swatches"
@@ -264,7 +265,7 @@ export function SettingsWorkspace({
 
               <Separator />
 
-              <Field orientation="horizontal" className="p-5">
+              <Field orientation="horizontal" className="p-4">
                 <FieldContent>
                   <FieldTitle>终端配色</FieldTitle>
                   <FieldDescription>
@@ -281,7 +282,7 @@ export function SettingsWorkspace({
 
               <Field
                 orientation="horizontal"
-                className="p-5"
+                className="p-4"
                 data-disabled={isSemanticHighlightingDisabled}
                 data-invalid={Boolean(displayedSemanticHighlightingError)}
               >

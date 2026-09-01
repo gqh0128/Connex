@@ -7,13 +7,13 @@ export type TerminalFontWeightDirection = "increase" | "decrease";
 
 const FONT_WEIGHT_LABELS: Readonly<Record<number, string>> = {
   100: "Thin",
-  200: "ExtraLight",
+  200: "XLight",
   300: "Light",
   400: "Regular",
   500: "Medium",
-  600: "SemiBold",
+  600: "SBold",
   700: "Bold",
-  800: "ExtraBold",
+  800: "XBold",
 };
 
 export function normalizeTerminalFontWeight(value: number) {

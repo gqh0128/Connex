@@ -143,7 +143,7 @@ export function TerminalAppearancePreview({
   ]);
 
   return (
-    <Field className="p-5">
+    <Field className="p-4">
       <FieldContent>
         <FieldTitle>终端预览</FieldTitle>
         <FieldDescription>
