@@ -38,6 +38,7 @@ type TerminalWorkspaceProps = {
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
   onInput: (localId: string, data: Uint8Array) => Promise<void>;
   onResize: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
+  onReconnect: (localId: string) => void;
   onClose: (localId: string) => void;
 };
 
@@ -59,6 +60,7 @@ export function TerminalWorkspace({
   onRegisterOutput,
   onInput,
   onResize,
+  onReconnect,
   onClose,
 }: TerminalWorkspaceProps) {
   const shortcutModifier = getPrimaryShortcutModifierLabel();
@@ -115,6 +117,7 @@ export function TerminalWorkspace({
           onRegisterOutput={onRegisterOutput}
           onInput={onInput}
           onResize={onResize}
+          onReconnect={onReconnect}
           onClose={onClose}
         />
       ))}

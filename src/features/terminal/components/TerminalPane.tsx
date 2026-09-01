@@ -7,6 +7,7 @@ import {
   Copy,
   Eraser,
   LoaderCircle,
+  RefreshCw,
   ShieldQuestion,
   TextSelect,
 } from "lucide-react";
@@ -93,6 +94,7 @@ type TerminalPaneProps = {
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
   onInput: (localId: string, data: Uint8Array) => Promise<void>;
   onResize: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
+  onReconnect: (localId: string) => void;
   onClose: (localId: string) => void;
 };
 
@@ -113,6 +115,7 @@ export function TerminalPane({
   onRegisterOutput,
   onInput,
   onResize,
+  onReconnect,
   onClose,
 }: TerminalPaneProps) {
   const { resolvedTheme } = useTheme();
@@ -533,12 +536,19 @@ export function TerminalPane({
       {tab.snapshot?.state === "connected" ? null : (
         <SessionStateNotice
           presentation={presentation}
+          canReconnect={
+            Boolean(tab.startError) ||
+            tab.snapshot?.state === "closed" ||
+            tab.snapshot?.state === "disconnected" ||
+            tab.snapshot?.state === "error"
+          }
           canClose={
             Boolean(tab.startError) ||
             tab.snapshot?.state === "closed" ||
             tab.snapshot?.state === "disconnected" ||
             tab.snapshot?.state === "error"
           }
+          onReconnect={() => onReconnect(tab.localId)}
           onClose={() => onClose(tab.localId)}
         />
       )}
@@ -548,13 +558,17 @@ export function TerminalPane({
 
 type SessionStateNoticeProps = {
   presentation: ReturnType<typeof getSessionPresentation>;
+  canReconnect: boolean;
   canClose: boolean;
+  onReconnect: () => void;
   onClose: () => void;
 };
 
 function SessionStateNotice({
   presentation,
+  canReconnect,
   canClose,
+  onReconnect,
   onClose,
 }: SessionStateNoticeProps) {
   const Icon = presentation.isBusy
@@ -568,7 +582,7 @@ function SessionStateNotice({
   return (
     <div
       aria-live="polite"
-      className="absolute top-3 right-4 z-10 flex max-w-sm items-start gap-3 rounded-lg border bg-surface/95 p-3 shadow-lg backdrop-blur-sm"
+      className="absolute top-3 right-4 z-10 flex max-w-md items-start gap-3 rounded-lg border bg-surface/95 p-3 shadow-lg backdrop-blur-sm"
     >
       <Icon
         className={cn(
@@ -587,10 +601,20 @@ function SessionStateNotice({
           </p>
         ) : null}
       </div>
-      {canClose ? (
-        <Button type="button" variant="outline" size="sm" onClick={onClose}>
-          关闭
-        </Button>
+      {canReconnect || canClose ? (
+        <div className="flex shrink-0 items-center gap-2">
+          {canReconnect ? (
+            <Button type="button" size="sm" onClick={onReconnect}>
+              <RefreshCw data-icon="inline-start" />
+              重新连接
+            </Button>
+          ) : null}
+          {canClose ? (
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              关闭标签
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -375,6 +375,7 @@ export function AppShell({
                         onRegisterOutput={sshSessions.registerOutputHandler}
                         onInput={sshSessions.writeInput}
                         onResize={sshSessions.resizeSession}
+                        onReconnect={reconnectSession}
                         onClose={closeSession}
                       />
                     </ResizablePanel>

@@ -98,6 +98,14 @@ export function getSessionPresentation(tab: SshSessionTab | null): SessionPresen
         isBusy: false,
       };
     case "error":
+      if (snapshot.failure?.code === "connectionLost") {
+        return {
+          label: "连接已丢失",
+          detail: snapshot.failure.message,
+          tone: "error",
+          isBusy: false,
+        };
+      }
       return {
         label: "连接失败",
         detail: snapshot.failure?.message ?? "SSH 会话发生未知错误。",
