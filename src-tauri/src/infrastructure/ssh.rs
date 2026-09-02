@@ -310,10 +310,10 @@ async fn authenticate_with_agent(
     session: &mut client::Handle<HostKeyHandler>,
     username: &str,
 ) -> Result<bool, SshTransportError> {
-    if let Ok(mut agent) = AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await {
-        if authenticate_agent_identities(session, username, &mut agent).await? {
-            return Ok(true);
-        }
+    if let Ok(mut agent) = AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await
+        && authenticate_agent_identities(session, username, &mut agent).await?
+    {
+        return Ok(true);
     }
 
     let mut pageant = AgentClient::connect_pageant()
