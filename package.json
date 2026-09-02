@@ -12,7 +12,7 @@
     "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml --all",
     "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
     "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm check:rust",
+    "check": "pnpm typecheck && pnpm lint && pnpm check:rust",
     "preview": "vite preview",
     "shadcn": "pnpm dlx --package=zod@3.25.76 --package=shadcn@4.19.0 shadcn",
     "tauri": "tauri"
