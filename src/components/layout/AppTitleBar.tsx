@@ -5,24 +5,32 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TransferPopover } from "@/features/transfers/components/TransferPopover";
 import type { FileTransfersController } from "@/features/transfers/hooks/useFileTransfers";
 import { isMacOSPlatform } from "@/lib/platform";
+import { cn } from "@/lib/utils";
 import type { AppView, WorkspacePageId } from "@/types/navigation";
 
 type AppTitleBarProps = {
   activeView: AppView;
   activeContextLabel: string | null;
+  interfaceScalePercent: number;
   transfers: FileTransfersController;
   onPageOpen: (pageId: WorkspacePageId) => void;
 };
 
+const MACOS_TITLE_BAR_INSET_PX = 76;
+
 export function AppTitleBar({
   activeView,
   activeContextLabel,
+  interfaceScalePercent,
   transfers,
   onPageOpen,
 }: AppTitleBarProps) {
   const isMacPlatform = isMacOSPlatform();
   const isSettingsOpen = activeView === "settings";
   const activeLabel = isSettingsOpen ? "设置" : (activeContextLabel ?? "欢迎");
+  const macOSTitleBarInset = isMacPlatform
+    ? `${(MACOS_TITLE_BAR_INSET_PX * 100) / interfaceScalePercent}px`
+    : undefined;
 
   return (
     <header
@@ -30,7 +38,11 @@ export function AppTitleBar({
       className="flex h-11 shrink-0 select-none items-center border-b bg-surface text-surface-foreground"
       onContextMenu={(event) => event.preventDefault()}
     >
-      {isMacPlatform ? <div className="w-[76px] shrink-0" aria-hidden="true" /> : null}
+      <div
+        className={cn("shrink-0", !isMacPlatform && "w-3")}
+        style={{ width: macOSTitleBarInset }}
+        aria-hidden="true"
+      />
 
       <div
         data-tauri-drag-region={isMacPlatform ? true : undefined}

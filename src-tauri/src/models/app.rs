@@ -12,6 +12,7 @@ pub struct AppInfo {
 pub struct AppPreferences {
     pub confirm_before_exit: bool,
     pub color_scheme_id: String,
+    pub interface_scale_percent: i64,
     pub terminal_semantic_highlighting_enabled: bool,
     pub terminal_font_id: String,
     pub terminal_font_weight: i64,
@@ -25,6 +26,7 @@ pub struct AppPreferences {
 pub struct UpdateAppPreferencesInput {
     pub confirm_before_exit: bool,
     pub color_scheme_id: String,
+    pub interface_scale_percent: i64,
     pub terminal_semantic_highlighting_enabled: bool,
     pub terminal_font_id: String,
     pub terminal_font_weight: i64,

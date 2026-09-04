@@ -54,6 +54,7 @@ type AppShellProps = {
   appPreferences: AppPreferences;
   isAppPreferencesLoading: boolean;
   appPreferencesError: string | null;
+  interfaceScaleError: string | null;
   onAppPreferencesChange: (changes: Partial<AppPreferences>) => Promise<AppPreferences>;
   terminalThemeProfileId: TerminalThemeProfileId;
   terminalFonts: TerminalFontsController;
@@ -71,6 +72,7 @@ export function AppShell({
   appPreferences,
   isAppPreferencesLoading,
   appPreferencesError,
+  interfaceScaleError,
   onAppPreferencesChange,
   terminalThemeProfileId,
   terminalFonts,
@@ -312,6 +314,7 @@ export function AppShell({
       <AppTitleBar
         activeView={activeView}
         activeContextLabel={sshSessions.activeTab?.profile.name ?? null}
+        interfaceScalePercent={appPreferences.interfaceScalePercent}
         transfers={fileTransfers}
         onPageOpen={onPageOpen}
       />
@@ -464,6 +467,7 @@ export function AppShell({
                     appPreferences={appPreferences}
                     isAppPreferencesLoading={isAppPreferencesLoading}
                     appPreferencesError={appPreferencesError}
+                    interfaceScaleError={interfaceScaleError}
                     onAppPreferencesChange={onAppPreferencesChange}
                     terminalThemeProfileId={terminalThemeProfileId}
                     terminalFonts={terminalFonts}

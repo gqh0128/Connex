@@ -8,6 +8,7 @@ use crate::infrastructure::database::Database;
 pub struct StoredAppPreferences {
     pub confirm_before_exit: bool,
     pub color_scheme_id: String,
+    pub interface_scale_percent: i64,
     pub terminal_semantic_highlighting_enabled: bool,
     pub terminal_font_id: String,
     pub terminal_font_weight: i64,
@@ -34,6 +35,7 @@ impl AppSettingsRepository {
                 |database| -> tokio_rusqlite::rusqlite::Result<StoredAppPreferences> {
                     database.query_row(
                         "SELECT app.confirm_before_exit, appearance.color_scheme_id, \
+                         appearance.interface_scale_percent, \
                          terminal_semantic_highlighting_enabled, terminal_font_id, \
                          terminal_font_weight, terminal_font_size, \
                          terminal_line_height, \
@@ -46,12 +48,13 @@ impl AppSettingsRepository {
                             Ok(StoredAppPreferences {
                                 confirm_before_exit: row.get(0)?,
                                 color_scheme_id: row.get(1)?,
-                                terminal_semantic_highlighting_enabled: row.get(2)?,
-                                terminal_font_id: row.get(3)?,
-                                terminal_font_weight: row.get(4)?,
-                                terminal_font_size: row.get(5)?,
-                                terminal_line_height: row.get(6)?,
-                                terminal_font_size_shortcuts_enabled: row.get(7)?,
+                                interface_scale_percent: row.get(2)?,
+                                terminal_semantic_highlighting_enabled: row.get(3)?,
+                                terminal_font_id: row.get(4)?,
+                                terminal_font_weight: row.get(5)?,
+                                terminal_font_size: row.get(6)?,
+                                terminal_line_height: row.get(7)?,
+                                terminal_font_size_shortcuts_enabled: row.get(8)?,
                             })
                         },
                     )
@@ -94,9 +97,13 @@ impl AppSettingsRepository {
                     let appearance_settings_changed = transaction.execute(
                         "UPDATE app_appearance_settings SET \
                          color_scheme_id = ?1, \
+                         interface_scale_percent = ?2, \
                          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
                          WHERE id = 1",
-                        params![preferences.color_scheme_id],
+                        params![
+                            preferences.color_scheme_id,
+                            preferences.interface_scale_percent,
+                        ],
                     )?;
                     transaction.commit()?;
 

@@ -15,6 +15,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../migrations/0009_add_terminal_line_height.sql"),
     include_str!("../../migrations/0010_add_terminal_font_weight.sql"),
     include_str!("../../migrations/0011_add_color_scheme.sql"),
+    include_str!("../../migrations/0012_add_interface_scale.sql"),
+    include_str!("../../migrations/0013_expand_interface_scale_range.sql"),
 ];
 
 #[derive(Clone)]

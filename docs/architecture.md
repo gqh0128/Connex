@@ -195,7 +195,7 @@ v1 备份只迁移私钥路径和可选的私钥口令，不复制私钥文件�
 
 known host 按 `host + port + key algorithm` 保存 SHA-256 指纹。同一主机可以保存多种主机密钥算法；已经记录的算法出现不同指纹时必须拒绝连接，不能由普通的“首次信任”流程覆盖。
 
-应用设置使用单例 `app_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、全局 `color_scheme_id`、`terminal_semantic_highlighting_enabled`、稳定的 `terminal_font_id`、终端字重、字号、行距和字号快捷键开关。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改、终端快捷键修改和退出确认中的“记住我的选择”都必须写入 SQLite；读取失败时采用安全默认值，仍然显示退出确认、使用松柏绿、启用语义高亮、使用内置 JetBrains Mono、500 字重、13 px 字号、1.10 行距并开启字号快捷键。全局配色同时镜像到 localStorage 作为首帧关键值，SQLite 仍是最终来源。字号在前后端统一限制为 9–32 px。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
+应用设置使用单例 `app_settings` 与 `app_appearance_settings` 表保存，当前包含默认开启的 `confirm_before_exit`、全局 `color_scheme_id`、默认 `100%` 且限制为 `75%–175%`、步长 `5%` 的 `interface_scale_percent`、`terminal_semantic_highlighting_enabled`、稳定的 `terminal_font_id`、终端字重、字号、行距和字号快捷键开关。React 启动后由通用应用偏好 hook 通过类型化 commands 一次读取和串行更新，设置页修改、终端快捷键修改和退出确认中的“记住我的选择”都必须写入 SQLite；读取失败时采用安全默认值，仍然显示退出确认、使用松柏绿和 `100%` 界面缩放、启用语义高亮、使用内置 JetBrains Mono、500 字重、13 px 字号、1.10 行距并开启字号快捷键。全局缩放由应用根部通过单一 Tauri WebView adapter 应用，功能模块不感知缩放比例；Capability 只开放 `core:webview:allow-set-webview-zoom`。应用偏好读取错误可以作为共享状态展示，单项更新错误必须由发起更新的控件就地处理，不能污染其他设置项。全局配色同时镜像到 localStorage 作为首帧关键值，SQLite 仍是最终来源。字号在前后端统一限制为 9–32 px。终端 theme profile ID 在提供第二套真实主题和选择器时再加入持久化字段。
 
 用户选择的本机字体以字体族名称组成稳定设置 ID；如果重启后该字体不再存在，则安全回退到默认 JetBrains Mono。用户导入的字体由 `TerminalFontService` 校验扩展名、文件签名和 10 MiB 大小限制，再以 UUID 文件名复制到应用数据目录的 `terminal-fonts` 子目录；SQLite 的 `terminal_font_files` 只保存稳定 ID、展示名称、格式、大小和内部文件名，不保留用户原始路径。Commands 保持薄，文件校验与复制在 service 中完成，元数据读写位于 repository。删除字体必须确认且只删除 Connex 的副本；当前选中的自定义字体删除前先切回默认 profile。
 
