@@ -7,7 +7,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: desktop-build-${{ github.ref }}
@@ -25,10 +25,12 @@ jobs:
           - name: macOS ARM64
             runner: macos-15
             target: aarch64-apple-darwin
+            bundles: dmg
             apple_signing_identity: "-"
           - name: Windows x64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
             apple_signing_identity: ""
 
     env:
@@ -70,8 +72,19 @@ jobs:
 
       - name: Build and upload packages
         uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: pnpm tauri
-          args: --target ${{ matrix.target }}
-          uploadWorkflowArtifacts: true
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          tagName: ${{ github.event_name == 'push' && github.ref_name || '' }}
+          releaseName: ${{ github.event_name == 'push' && format('Connex {0}', github.ref_name) || '' }}
+          releaseBody: Download the installer for your platform from the assets below.
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          retryAttempts: 2
+          uploadUpdaterJson: false
+          releaseAssetNamePattern: Connex_[version]_[platform]_[arch][setup][ext]
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
           workflowArtifactNamePattern: Connex-[platform]-[arch]-[bundle]

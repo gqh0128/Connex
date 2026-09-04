@@ -80,7 +80,7 @@ Connex 希望把日常服务器操作中最常用的几件事放在同一个桌�
 | Windows | x64                   | GitHub Actions 自动构建，实机兼容性持续验证中 |
 | Linux   | —                     | 源码保留兼容设计，暂未提供官方构建包          |
 
-GitHub Actions 会在手动触发或推送 `v*` 标签时构建 macOS ARM64 和 Windows x64 安装包。正式发行包、代码签名和平台安装说明会在首个公开版本发布前补充。
+推送与应用版本对应的 `v*` 标签时，GitHub Actions 会自动创建同名 Release，并上传 macOS ARM64 的 `.dmg` 以及 Windows x64 的 `.exe`、`.msi` 安装包。手动触发工作流时只生成 Actions Artifacts，便于发布前验证；当前尚未接入正式代码签名。
 
 ## 从源码运行
 
