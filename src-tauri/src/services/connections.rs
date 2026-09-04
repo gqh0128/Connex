@@ -33,13 +33,6 @@ impl ConnectionService {
         draft: ConnectionDraft,
         credential: Option<SecretString>,
     ) -> Result<ConnectionProfile, ConnectionServiceError> {
-        if draft.authentication_method == AuthenticationMethod::Password && credential.is_none() {
-            return Err(ConnectionServiceError::InvalidInput {
-                field: "password",
-                message: "请输入 SSH 登录密码。",
-            });
-        }
-
         let id = Uuid::new_v4().to_string();
         let has_stored_credential = credential.is_some();
         if let Some(credential) = credential {
@@ -71,9 +64,10 @@ impl ConnectionService {
         id: String,
         draft: ConnectionDraft,
         credential: Option<SecretString>,
+        should_clear_credential: bool,
     ) -> Result<ConnectionProfile, ConnectionServiceError> {
         let current = self.repository.get(id.clone()).await?;
-        let mutation = credential_mutation(&current, &draft, credential)?;
+        let mutation = credential_mutation(&current, &draft, credential, should_clear_credential);
         self.update_with_mutation(id, draft, current, mutation, None)
             .await
     }
@@ -267,24 +261,21 @@ fn credential_mutation(
     current: &ConnectionProfile,
     draft: &ConnectionDraft,
     credential: Option<SecretString>,
-) -> Result<CredentialMutation, ConnectionServiceError> {
+    should_clear_credential: bool,
+) -> CredentialMutation {
+    if should_clear_credential {
+        return CredentialMutation::Delete;
+    }
+
     if let Some(credential) = credential {
-        return Ok(CredentialMutation::Set(credential));
+        return CredentialMutation::Set(credential);
     }
 
     if current.authentication_method == draft.authentication_method {
-        return Ok(CredentialMutation::Keep);
+        return CredentialMutation::Keep;
     }
 
-    match draft.authentication_method {
-        AuthenticationMethod::Password => Err(ConnectionServiceError::InvalidInput {
-            field: "password",
-            message: "切换为密码认证时必须输入 SSH 登录密码。",
-        }),
-        AuthenticationMethod::PrivateKey | AuthenticationMethod::Agent => {
-            Ok(CredentialMutation::Delete)
-        }
-    }
+    CredentialMutation::Delete
 }
 
 fn credential_mutation_for_import(

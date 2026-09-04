@@ -49,8 +49,11 @@ export function ImportSshConfigDialog({
     [preview],
   );
   const counts = useMemo(() => countStatuses(preview?.items ?? []), [preview]);
-  const selectedCount = selectableItems.filter((item) => selectedKeys.has(item.key)).length;
-  const isAllSelected = selectableItems.length > 0 && selectedCount === selectableItems.length;
+  const selectedCount = selectableItems.filter((item) =>
+    selectedKeys.has(item.key),
+  ).length;
+  const isAllSelected =
+    selectableItems.length > 0 && selectedCount === selectableItems.length;
   const isPartiallySelected = selectedCount > 0 && !isAllSelected;
 
   useEffect(() => {
@@ -68,7 +71,7 @@ export function ImportSshConfigDialog({
           new Set(
             nextPreview.items
               .filter((item) => item.status !== "skipped")
-            .map((item) => item.key),
+              .map((item) => item.key),
           ),
         );
       })
@@ -154,12 +157,15 @@ export function ImportSshConfigDialog({
           <div role="status" className="py-4 text-sm">
             <p className="font-medium">SSH 连接已导入。</p>
             <p className="mt-1 text-muted-foreground">
-              新增 {result.importedCount} 个，覆盖 {result.overwrittenCount} 个，保留副本{" "}
-              {result.duplicatedCount} 个，跳过 {result.skippedCount} 个。
+              新增 {result.importedCount} 个，覆盖 {result.overwrittenCount}{" "}
+              个，保留副本 {result.duplicatedCount} 个，跳过 {result.skippedCount} 个。
             </p>
           </div>
         ) : isScanning ? (
-          <div role="status" className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div
+            role="status"
+            className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground"
+          >
             <RefreshCw className="size-4 animate-spin" />
             正在扫描 SSH config…
           </div>
@@ -173,14 +179,20 @@ export function ImportSshConfigDialog({
               <Badge variant={counts.skipped > 0 ? "outline" : "secondary"}>
                 {counts.skipped} 个跳过
               </Badge>
-              <span className="ml-auto max-w-72 truncate text-muted-foreground" title={preview.sourcePath}>
+              <span
+                className="ml-auto max-w-72 truncate text-muted-foreground"
+                title={preview.sourcePath}
+              >
                 {preview.sourcePath}
               </span>
             </div>
 
             {counts.conflict > 0 ? (
               <div className="flex items-center justify-between gap-3">
-                <span id="ssh-config-conflict-label" className="shrink-0 text-xs font-medium">
+                <span
+                  id="ssh-config-conflict-label"
+                  className="shrink-0 text-xs font-medium"
+                >
                   同名冲突
                 </span>
                 <ToggleGroup
@@ -327,7 +339,9 @@ function SshConfigRow({ item, isSelected, onSelectedChange }: SshConfigRowProps)
     <div
       className={cn(
         "grid min-h-12 grid-cols-[24px_minmax(120px,0.8fr)_minmax(180px,1.3fr)_110px] items-center gap-2 border-b px-2.5 py-1.5 text-sm last:border-b-0",
-        isDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent/45",
+        isDisabled
+          ? "cursor-not-allowed opacity-60"
+          : "cursor-pointer hover:bg-accent/45",
       )}
       onClick={() => {
         if (!isDisabled) {
@@ -353,11 +367,17 @@ function SshConfigRow({ item, isSelected, onSelectedChange }: SshConfigRowProps)
         </span>
       </span>
       <span className="min-w-0">
-        <span className="block truncate tabular-nums" title={`${item.username}@${item.host}:${item.port}`}>
+        <span
+          className="block truncate tabular-nums"
+          title={`${item.username}@${item.host}:${item.port}`}
+        >
           {item.username}@{item.host}:{item.port}
         </span>
-        <span className="block truncate text-xs text-muted-foreground" title={item.privateKeyPath ?? "SSH Agent"}>
-          {item.privateKeyPath ?? "SSH Agent"}
+        <span
+          className="block truncate text-xs text-muted-foreground"
+          title={item.privateKeyPath ?? "密码（未填写）"}
+        >
+          {item.privateKeyPath ?? "密码（未填写）"}
         </span>
       </span>
       <StatusBadge status={item.status} />

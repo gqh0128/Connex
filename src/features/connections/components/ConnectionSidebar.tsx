@@ -349,9 +349,7 @@ export const ConnectionSidebar = forwardRef<
         connection={editingConnection}
         onOpenChange={setIsFormOpen}
         onSubmit={saveConnection}
-        onRevealCredential={
-          editingConnection ? () => revealCredential(editingConnection.id) : undefined
-        }
+        onRevealCredential={revealCredential}
       />
 
       <ImportSshConfigDialog

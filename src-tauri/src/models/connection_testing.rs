@@ -21,6 +21,7 @@ pub struct TestSshConnectionInput {
 pub struct TestSshConnectionParts {
     pub draft: ConnectionDraft,
     pub credential: Option<SecretString>,
+    pub can_use_saved_credential: bool,
     pub connection_id: Option<String>,
     pub accepted_host_key: Option<HostKeyChallenge>,
     pub should_remember_host_key: bool,
@@ -28,20 +29,22 @@ pub struct TestSshConnectionParts {
 
 impl TestSshConnectionInput {
     pub fn into_parts(self) -> Result<TestSshConnectionParts, ConnectionTestServiceError> {
-        let (draft, credential) = self.connection.into_parts().map_err(|error| match error {
-            crate::services::connections::ConnectionServiceError::InvalidInput {
-                field,
-                message,
-            } => ConnectionTestServiceError::InvalidInput { field, message },
-            _ => ConnectionTestServiceError::InvalidInput {
-                field: "form",
-                message: "连接参数无效。",
-            },
-        })?;
+        let (draft, credential, should_clear_credential) =
+            self.connection.into_parts().map_err(|error| match error {
+                crate::services::connections::ConnectionServiceError::InvalidInput {
+                    field,
+                    message,
+                } => ConnectionTestServiceError::InvalidInput { field, message },
+                _ => ConnectionTestServiceError::InvalidInput {
+                    field: "form",
+                    message: "连接参数无效。",
+                },
+            })?;
 
         Ok(TestSshConnectionParts {
             draft,
             credential,
+            can_use_saved_credential: !should_clear_credential,
             connection_id: self.connection_id,
             accepted_host_key: self.accepted_host_key.map(Into::into),
             should_remember_host_key: self.should_remember_host_key,

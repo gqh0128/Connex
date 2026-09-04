@@ -15,6 +15,7 @@ export type ConnectionMetadataInput = {
 export type SaveConnectionInput = ConnectionMetadataInput & {
   password: string | null;
   privateKeyPassphrase: string | null;
+  clearCredential: boolean;
 };
 
 export type TestSshConnectionInput = SaveConnectionInput & {

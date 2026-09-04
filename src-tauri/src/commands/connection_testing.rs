@@ -14,6 +14,7 @@ pub async fn test_ssh_connection(
     let TestSshConnectionParts {
         draft,
         credential,
+        can_use_saved_credential,
         connection_id,
         accepted_host_key,
         should_remember_host_key,
@@ -23,6 +24,7 @@ pub async fn test_ssh_connection(
         .test(
             draft,
             credential,
+            can_use_saved_credential,
             connection_id,
             accepted_host_key,
             should_remember_host_key,

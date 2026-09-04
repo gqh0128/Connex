@@ -145,7 +145,7 @@ impl SessionAuthentication {
             AuthenticationMethod::Password => {
                 let password = credential.ok_or(SessionValidationError {
                     field: "password",
-                    message: "当前连接没有可用的密码。",
+                    message: "未输入密码，请编辑连接并填写密码后重试。",
                 })?;
                 Ok(Self::Password(password))
             }

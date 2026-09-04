@@ -20,7 +20,7 @@ pub async fn create_connection(
     input: SaveConnectionInput,
     service: State<'_, ConnectionService>,
 ) -> Result<ConnectionProfileDto, CommandError> {
-    let (draft, credential) = input.into_parts().map_err(CommandError::from)?;
+    let (draft, credential, _) = input.into_parts().map_err(CommandError::from)?;
 
     service
         .create(draft, credential)
@@ -35,10 +35,11 @@ pub async fn update_connection(
     input: SaveConnectionInput,
     service: State<'_, ConnectionService>,
 ) -> Result<ConnectionProfileDto, CommandError> {
-    let (draft, credential) = input.into_parts().map_err(CommandError::from)?;
+    let (draft, credential, should_clear_credential) =
+        input.into_parts().map_err(CommandError::from)?;
 
     service
-        .update(id, draft, credential)
+        .update(id, draft, credential, should_clear_credential)
         .await
         .map(Into::into)
         .map_err(Into::into)

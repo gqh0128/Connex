@@ -1,4 +1,4 @@
-use crate::domain::connections::ConnectionDraft;
+use crate::domain::connections::{AuthenticationMethod, ConnectionDraft};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SshConfigConflictStrategy {
@@ -26,6 +26,16 @@ pub struct ParsedSshConfigCandidate {
     pub line_number: usize,
     pub warnings: Vec<String>,
     pub skipped_reason: Option<String>,
+}
+
+impl ParsedSshConfigCandidate {
+    pub fn authentication_method(&self) -> AuthenticationMethod {
+        if self.private_key_path.is_some() {
+            AuthenticationMethod::PrivateKey
+        } else {
+            AuthenticationMethod::Password
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

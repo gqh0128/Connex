@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::domain::connections::AuthenticationMethod;
 use crate::domain::ssh_config::{
     SshConfigCandidateStatus, SshConfigConflictStrategy, SshConfigImportResult, SshConfigPreview,
     SshConfigPreviewItem,
@@ -91,11 +90,7 @@ pub struct SshConfigPreviewItemDto {
 
 impl From<SshConfigPreviewItem> for SshConfigPreviewItemDto {
     fn from(item: SshConfigPreviewItem) -> Self {
-        let authentication_method = if item.candidate.private_key_path.is_some() {
-            AuthenticationMethod::PrivateKey
-        } else {
-            AuthenticationMethod::Agent
-        };
+        let authentication_method = item.candidate.authentication_method();
         Self {
             key: item.candidate.key,
             alias: item.candidate.alias,

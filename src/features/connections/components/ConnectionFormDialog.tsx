@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,12 +37,12 @@ type ConnectionFormDialogProps = {
   connection: ConnectionProfile | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: SaveConnectionInput) => Promise<unknown>;
-  onRevealCredential?: () => Promise<string | null>;
+  onRevealCredential: (connectionId: string) => Promise<string | null>;
 };
 
 type ConnectionFormState = Omit<
   SaveConnectionInput,
-  "port" | "privateKeyPath" | "password" | "privateKeyPassphrase"
+  "port" | "privateKeyPath" | "password" | "privateKeyPassphrase" | "clearCredential"
 > & {
   port: string;
   privateKeyPath: string;
@@ -52,6 +52,15 @@ type ConnectionFormState = Omit<
 
 type FormField = keyof ConnectionFormState | "form";
 type FormErrors = Partial<Record<FormField, string>>;
+type CredentialEdits = {
+  password: boolean;
+  privateKeyPassphrase: boolean;
+};
+
+const EMPTY_CREDENTIAL_EDITS: CredentialEdits = {
+  password: false,
+  privateKeyPassphrase: false,
+};
 
 const AUTHENTICATION_OPTIONS: Array<{
   value: AuthenticationMethod;
@@ -75,6 +84,11 @@ export function ConnectionFormDialog({
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isCredentialLoading, setIsCredentialLoading] = useState(
+    Boolean(connection?.hasStoredCredential && getCredentialField(connection)),
+  );
+  const [credentialEdits, setCredentialEdits] =
+    useState<CredentialEdits>(EMPTY_CREDENTIAL_EDITS);
   const [testRevision, setTestRevision] = useState(0);
   const isEditing = connection !== null;
   const canKeepCredential = Boolean(
@@ -100,6 +114,7 @@ export function ConnectionFormDialog({
         privateKeyPassphrase: "",
       }));
       setErrors({});
+      setCredentialEdits(EMPTY_CREDENTIAL_EDITS);
     }
 
     onOpenChange(nextOpen);
@@ -108,7 +123,7 @@ export function ConnectionFormDialog({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const nextErrors = validateForm(form, connection);
+    const nextErrors = validateForm(form);
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
@@ -119,7 +134,7 @@ export function ConnectionFormDialog({
 
     try {
       await onSubmit({
-        ...toSaveConnectionInput(form),
+        ...toSaveConnectionInput(form, connection, credentialEdits),
       });
       handleOpenChange(false);
     } catch (error) {
@@ -132,13 +147,13 @@ export function ConnectionFormDialog({
   };
 
   const revealStoredCredential = async (field: "password" | "privateKeyPassphrase") => {
-    if (!onRevealCredential) {
+    if (!connection) {
       return null;
     }
 
     setErrors((current) => ({ ...current, [field]: undefined, form: undefined }));
     try {
-      const credential = await onRevealCredential();
+      const credential = await onRevealCredential(connection.id);
       if (credential === null) {
         setErrors((current) => ({
           ...current,
@@ -155,6 +170,51 @@ export function ConnectionFormDialog({
     }
   };
 
+  useEffect(() => {
+    if (!open || !connection?.hasStoredCredential) {
+      return;
+    }
+
+    let isActive = true;
+    const credentialField = getCredentialField(connection);
+
+    if (!credentialField) {
+      return;
+    }
+
+    void onRevealCredential(connection.id)
+      .then((credential) => {
+        if (!isActive) {
+          return;
+        }
+        if (credential === null) {
+          setErrors((current) => ({
+            ...current,
+            [credentialField]: "没有找到已保存的凭据，请输入新值后保存。",
+          }));
+          return;
+        }
+        setForm((current) => ({ ...current, [credentialField]: credential }));
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setErrors((current) => ({
+            ...current,
+            [credentialField]: getCommandError(error).message,
+          }));
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsCredentialLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [connection, onRevealCredential, open]);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-lg">
@@ -163,8 +223,8 @@ export function ConnectionFormDialog({
             <DialogTitle>{isEditing ? "编辑 SSH 连接" : "新建 SSH 连接"}</DialogTitle>
             <DialogDescription>
               {isEditing
-                ? "更新服务器或认证信息；凭据留空将继续使用已保存内容。"
-                : "填写服务器地址和登录凭据。敏感信息仅加密保存在本机。"}
+                ? "更新服务器或认证信息；已保存凭据可直接查看和修改。"
+                : "填写服务器地址和认证信息；密码可以稍后补充。"}
             </DialogDescription>
           </DialogHeader>
 
@@ -274,9 +334,16 @@ export function ConnectionFormDialog({
                     value={form.password}
                     secretLabel="密码"
                     size="sm"
-                    placeholder={canKeepCredential ? "留空保留已保存密码" : "输入密码"}
+                    placeholder={isCredentialLoading ? "正在读取…" : "密码可留空"}
                     ariaInvalid={Boolean(errors.password)}
-                    onChange={(value) => setField("password", value)}
+                    disabled={isCredentialLoading}
+                    onChange={(value) => {
+                      setCredentialEdits((current) => ({
+                        ...current,
+                        password: true,
+                      }));
+                      setField("password", value);
+                    }}
                     onRevealStored={
                       canKeepCredential
                         ? () => revealStoredCredential("password")
@@ -285,9 +352,13 @@ export function ConnectionFormDialog({
                   />
                   {canKeepCredential ? (
                     <FieldDescription>
-                      留空保留原密码；输入新值会替换已保存密码。
+                      点击小眼睛查看；输入新值后保存即可替换。
                     </FieldDescription>
-                  ) : null}
+                  ) : (
+                    <FieldDescription>
+                      可先保存空密码；连接前需要在编辑页补充。
+                    </FieldDescription>
+                  )}
                   <FieldError>{errors.password}</FieldError>
                 </Field>
               ) : null}
@@ -331,10 +402,17 @@ export function ConnectionFormDialog({
                       secretLabel="私钥口令"
                       size="sm"
                       placeholder={
-                        canKeepCredential ? "留空保留已保存口令" : "未加密私钥可留空"
+                        isCredentialLoading ? "正在读取…" : "未加密私钥可留空"
                       }
                       ariaInvalid={Boolean(errors.privateKeyPassphrase)}
-                      onChange={(value) => setField("privateKeyPassphrase", value)}
+                      disabled={isCredentialLoading}
+                      onChange={(value) => {
+                        setCredentialEdits((current) => ({
+                          ...current,
+                          privateKeyPassphrase: true,
+                        }));
+                        setField("privateKeyPassphrase", value);
+                      }}
                       onRevealStored={
                         canKeepCredential
                           ? () => revealStoredCredential("privateKeyPassphrase")
@@ -368,14 +446,14 @@ export function ConnectionFormDialog({
               connectionId={connection?.id ?? null}
               disabled={isSaving}
               getInput={() => {
-                const nextErrors = validateForm(form, connection);
+                const nextErrors = validateForm(form);
                 delete nextErrors.name;
                 if (Object.keys(nextErrors).length > 0) {
                   setErrors(nextErrors);
                   return null;
                 }
                 return {
-                  ...toSaveConnectionInput(form),
+                  ...toSaveConnectionInput(form, connection, credentialEdits),
                   name: form.name.trim() || "连接测试",
                 };
               }}
@@ -399,6 +477,18 @@ export function ConnectionFormDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function getCredentialField(
+  connection: ConnectionProfile,
+): "password" | "privateKeyPassphrase" | null {
+  if (connection.authenticationMethod === "password") {
+    return "password";
+  }
+  if (connection.authenticationMethod === "privateKey") {
+    return "privateKeyPassphrase";
+  }
+  return null;
 }
 
 function getInitialForm(connection: ConnectionProfile | null): ConnectionFormState {
@@ -427,10 +517,7 @@ function getInitialForm(connection: ConnectionProfile | null): ConnectionFormSta
   };
 }
 
-function validateForm(
-  form: ConnectionFormState,
-  connection: ConnectionProfile | null,
-): FormErrors {
+function validateForm(form: ConnectionFormState): FormErrors {
   const errors: FormErrors = {};
   const port = Number(form.port);
 
@@ -446,15 +533,6 @@ function validateForm(
   if (!form.username.trim()) {
     errors.username = "请输入 SSH 用户名。";
   }
-  if (
-    form.authenticationMethod === "password" &&
-    !form.password &&
-    (!connection ||
-      connection.authenticationMethod !== "password" ||
-      !connection.hasStoredCredential)
-  ) {
-    errors.password = "请输入 SSH 登录密码。";
-  }
   if (form.authenticationMethod === "privateKey" && !form.privateKeyPath.trim()) {
     errors.privateKeyPath = "请输入私钥文件路径。";
   }
@@ -462,7 +540,33 @@ function validateForm(
   return errors;
 }
 
-function toSaveConnectionInput(form: ConnectionFormState): SaveConnectionInput {
+function toSaveConnectionInput(
+  form: ConnectionFormState,
+  connection: ConnectionProfile | null,
+  credentialEdits: CredentialEdits,
+): SaveConnectionInput {
+  const isAuthenticationChanged = Boolean(
+    connection && connection.authenticationMethod !== form.authenticationMethod,
+  );
+  const isCredentialEdited =
+    form.authenticationMethod === "password"
+      ? credentialEdits.password
+      : form.authenticationMethod === "privateKey"
+        ? credentialEdits.privateKeyPassphrase
+        : false;
+  const shouldReplaceCredential =
+    form.authenticationMethod !== "agent" &&
+    (connection === null || isAuthenticationChanged || isCredentialEdited);
+  const credentialValue =
+    form.authenticationMethod === "password"
+      ? form.password
+      : form.authenticationMethod === "privateKey"
+        ? form.privateKeyPassphrase
+        : "";
+  const clearCredential =
+    form.authenticationMethod === "agent" ||
+    ((isAuthenticationChanged || isCredentialEdited) && !credentialValue);
+
   return {
     name: form.name.trim(),
     host: form.host.trim(),
@@ -472,11 +576,18 @@ function toSaveConnectionInput(form: ConnectionFormState): SaveConnectionInput {
     privateKeyPath:
       form.authenticationMethod === "privateKey" ? form.privateKeyPath.trim() : null,
     password:
-      form.authenticationMethod === "password" && form.password ? form.password : null,
+      shouldReplaceCredential &&
+      form.authenticationMethod === "password" &&
+      form.password
+        ? form.password
+        : null,
     privateKeyPassphrase:
-      form.authenticationMethod === "privateKey" && form.privateKeyPassphrase
+      shouldReplaceCredential &&
+      form.authenticationMethod === "privateKey" &&
+      form.privateKeyPassphrase
         ? form.privateKeyPassphrase
         : null,
+    clearCredential,
   };
 }
 

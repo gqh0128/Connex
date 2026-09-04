@@ -22,11 +22,13 @@ impl ConnectionTestService {
         &self,
         draft: ConnectionDraft,
         mut credential: Option<SecretString>,
+        can_use_saved_credential: bool,
         connection_id: Option<String>,
         accepted_host_key: Option<HostKeyChallenge>,
         should_remember_host_key: bool,
     ) -> Result<ConnectionTestResult, ConnectionTestServiceError> {
-        if credential.is_none()
+        if can_use_saved_credential
+            && credential.is_none()
             && let Some(connection_id) = connection_id
         {
             let (saved_profile, saved_credential) = self

@@ -3,7 +3,7 @@ use std::fmt;
 
 use uuid::Uuid;
 
-use crate::domain::connections::{AuthenticationMethod, ConnectionDraft, ConnectionProfile};
+use crate::domain::connections::{ConnectionDraft, ConnectionProfile};
 use crate::domain::ssh_config::{
     ConnectionImportMutation, ParsedSshConfigCandidate, SshConfigCandidateStatus,
     SshConfigConflictStrategy, SshConfigImportResult, SshConfigPreview, SshConfigPreviewItem,
@@ -206,11 +206,7 @@ fn build_preview(
 fn candidate_to_draft(
     candidate: ParsedSshConfigCandidate,
 ) -> Result<ConnectionDraft, SshConfigImportError> {
-    let authentication_method = if candidate.private_key_path.is_some() {
-        AuthenticationMethod::PrivateKey
-    } else {
-        AuthenticationMethod::Agent
-    };
+    let authentication_method = candidate.authentication_method();
     ConnectionDraft::new(
         candidate.alias,
         candidate.host,

@@ -18,6 +18,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../migrations/0012_add_interface_scale.sql"),
     include_str!("../../migrations/0013_expand_interface_scale_range.sql"),
     include_str!("../../migrations/0014_add_connection_origin.sql"),
+    include_str!("../../migrations/0015_migrate_imported_agent_to_password.sql"),
 ];
 
 #[derive(Clone)]

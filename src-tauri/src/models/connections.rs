@@ -26,12 +26,14 @@ pub struct SaveConnectionInput {
     pub private_key_path: Option<String>,
     pub password: Option<String>,
     pub private_key_passphrase: Option<String>,
+    #[serde(default)]
+    pub clear_credential: bool,
 }
 
 impl SaveConnectionInput {
     pub fn into_parts(
         self,
-    ) -> Result<(ConnectionDraft, Option<SecretString>), ConnectionServiceError> {
+    ) -> Result<(ConnectionDraft, Option<SecretString>, bool), ConnectionServiceError> {
         let authentication_method = AuthenticationMethod::from(self.authentication_method);
         let password = self
             .password
@@ -56,7 +58,7 @@ impl SaveConnectionInput {
         )
         .map_err(ConnectionServiceError::from)?;
 
-        Ok((draft, credential))
+        Ok((draft, credential, self.clear_credential))
     }
 }
 
