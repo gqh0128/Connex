@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ExitConfirmationDialog } from "@/app/ExitConfirmationDialog";
+import { useAppInfo } from "@/app/useAppInfo";
 import { useAppPreferences } from "@/app/useAppPreferences";
 import { useExitConfirmation } from "@/app/useExitConfirmation";
 import { useInterfaceScale } from "@/app/useInterfaceScale";
@@ -19,6 +20,7 @@ export function App() {
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [activeView, setActiveView] = useState<AppView>("workspace");
   const [openPageIds, setOpenPageIds] = useState<WorkspacePageId[]>([]);
+  const appInfo = useAppInfo();
   const sshSessions = useSshSessions();
   const appPreferences = useAppPreferences();
   const interfaceScaleError = useInterfaceScale(
@@ -59,6 +61,7 @@ export function App() {
   return (
     <>
       <AppShell
+        appVersion={appInfo?.version ?? null}
         isFilePanelOpen={isFilePanelOpen}
         onFilePanelOpenChange={setIsFilePanelOpen}
         activeView={activeView}

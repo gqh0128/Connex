@@ -14,7 +14,9 @@
   <a href="https://github.com/gqh0128/Connex/actions/workflows/build-desktop.yml">
     <img src="https://img.shields.io/badge/build-macOS%20ARM64%20%7C%20Windows%20x64-2563eb" alt="构建平台：macOS ARM64 与 Windows x64" />
   </a>
-  <img src="https://img.shields.io/badge/version-0.1.0-2563eb" alt="当前版本 0.1.0" />
+  <a href="https://github.com/gqh0128/Connex/releases/latest">
+    <img src="https://img.shields.io/github/v/release/gqh0128/Connex?display_name=tag&sort=semver&label=version&color=2563eb" alt="当前发布版本" />
+  </a>
   <a href="./LICENSE">
     <img src="https://img.shields.io/badge/license-Apache--2.0-0f766e" alt="Apache License 2.0" />
   </a>
@@ -80,7 +82,13 @@ Connex 希望把日常服务器操作中最常用的几件事放在同一个桌�
 | Windows | x64                   | GitHub Actions 自动构建，实机兼容性持续验证中 |
 | Linux   | —                     | 源码保留兼容设计，暂未提供官方构建包          |
 
-推送与应用版本对应的 `v*` 标签时，GitHub Actions 会自动创建同名 Release，并上传 macOS ARM64 的 `.dmg` 以及 Windows x64 的 `.exe`、`.msi` 安装包。手动触发工作流时只生成 Actions Artifacts，便于发布前验证；当前尚未接入正式代码签名。
+将 `dev` 的发布 PR 合并到默认分支后，推送与应用版本对应的 `v*` 标签会触发 GitHub Actions：发布 PR 的 Description 会成为 Release 的主要说明，GitHub 自动生成的变更记录附在其后；macOS ARM64 的 `.dmg` 与 Windows x64 的 `.exe`、`.msi` 全部构建成功后，Draft Release 才会公开。手动触发工作流时只生成 Actions Artifacts，便于发布前验证；当前尚未接入正式代码签名。
+
+准备发布版本时，使用以下命令一次同步前端、Tauri 与 Rust 元数据中的版本号。该命令只修改本地文件，不会创建提交、标签或推送远端：
+
+```bash
+pnpm version:set 0.2.0
+```
 
 ## 从源码运行
 

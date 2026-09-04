@@ -44,6 +44,7 @@ import { StatusBar } from "./StatusBar";
 import { WIDE_WORKSPACE_QUERY } from "./layoutConstants";
 
 type AppShellProps = {
+  appVersion: string | null;
   isFilePanelOpen: boolean;
   onFilePanelOpenChange: (isOpen: boolean) => void;
   activeView: AppView;
@@ -62,6 +63,7 @@ type AppShellProps = {
 };
 
 export function AppShell({
+  appVersion,
   isFilePanelOpen,
   onFilePanelOpenChange,
   activeView,
@@ -488,7 +490,7 @@ export function AppShell({
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      <StatusBar activeTab={sshSessions.activeTab} />
+      <StatusBar activeTab={sshSessions.activeTab} appVersion={appVersion} />
 
       <Sheet
         open={activeView === "workspace" && !isWideWorkspace && isFilePanelOpen}

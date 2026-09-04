@@ -16,7 +16,8 @@
     "check": "pnpm typecheck && pnpm lint && pnpm check:rust",
     "preview": "vite preview",
     "shadcn": "pnpm dlx --package=zod@3.25.76 --package=shadcn@4.19.0 shadcn",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "version:set": "node scripts/setVersion.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::infrastructure::app_settings::{AppSettingsRepository, StoredAppPreferences};
 use crate::models::app::{AppInfo, AppPreferences, UpdateAppPreferencesInput};
@@ -24,10 +24,12 @@ const COLOR_SCHEME_IDS: [&str; 6] = [
 ];
 
 #[tauri::command]
-pub fn get_app_info() -> AppInfo {
+pub fn get_app_info(app: AppHandle) -> AppInfo {
+    let package_info = app.package_info();
+
     AppInfo {
-        name: env!("CARGO_PKG_NAME"),
-        version: env!("CARGO_PKG_VERSION"),
+        name: package_info.name.clone(),
+        version: package_info.version.to_string(),
     }
 }
 
