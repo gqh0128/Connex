@@ -12,13 +12,17 @@
 
 <p align="center">
   <a href="https://github.com/gqh0128/Connex/actions/workflows/build-desktop.yml">
-    <img src="https://github.com/gqh0128/Connex/actions/workflows/build-desktop.yml/badge.svg?branch=dev" alt="桌面端构建状态" />
+    <img src="https://img.shields.io/badge/build-macOS%20ARM64%20%7C%20Windows%20x64-2563eb" alt="构建平台：macOS ARM64 与 Windows x64" />
   </a>
   <img src="https://img.shields.io/badge/version-0.1.0-2563eb" alt="当前版本 0.1.0" />
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache--2.0-0f766e" alt="Apache License 2.0" />
+  </a>
   <img src="https://img.shields.io/badge/status-active%20development-f59e0b" alt="正在积极开发" />
 </p>
 
-> [!IMPORTANT]
+> **开发状态**
+>
 > Connex 当前处于积极开发阶段。macOS ARM64 是主要验证平台；Windows x64 已接入自动构建，但仍在持续进行实机兼容性验证。Linux 暂未提供官方构建包。
 
 ## 为什么选择 Connex
@@ -196,7 +200,9 @@ Connex 第一阶段聚焦连接配置、SSH 认证、远程终端、多会话标
 
 ## 许可证
 
-当前仓库尚未附带开源许可证。在正式添加 `LICENSE` 文件前，源代码仍保留全部权利；公开使用、修改或分发前请先联系项目维护者。项目首次公开发行前会明确许可证。
+Connex 基于 [Apache License 2.0](./LICENSE) 开源。你可以自由使用、修改和分发本项目，也可以将其用于商业用途，但需要遵守许可证中的版权、许可证声明和变更说明要求。
+
+仓库内置字体及其他第三方资源继续遵循各自目录中附带的许可证，不因 Connex 的项目许可证而改变。
 
 ---
 
