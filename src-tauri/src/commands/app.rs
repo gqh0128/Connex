@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::infrastructure::app_settings::{AppSettingsRepository, StoredAppPreferences};
 use crate::models::app::{AppInfo, AppPreferences, UpdateAppPreferencesInput};
@@ -11,6 +11,9 @@ const TERMINAL_FONT_WEIGHT_MAX: i64 = 800;
 const TERMINAL_FONT_WEIGHT_STEP: i64 = 100;
 const TERMINAL_LINE_HEIGHT_MIN: f64 = 1.0;
 const TERMINAL_LINE_HEIGHT_MAX: f64 = 2.0;
+const INTERFACE_SCALE_PERCENT_MIN: i64 = 75;
+const INTERFACE_SCALE_PERCENT_MAX: i64 = 175;
+const INTERFACE_SCALE_PERCENT_STEP: i64 = 5;
 const COLOR_SCHEME_IDS: [&str; 6] = [
     "pine",
     "business-blue",
@@ -21,10 +24,12 @@ const COLOR_SCHEME_IDS: [&str; 6] = [
 ];
 
 #[tauri::command]
-pub fn get_app_info() -> AppInfo {
+pub fn get_app_info(app: AppHandle) -> AppInfo {
+    let package_info = app.package_info();
+
     AppInfo {
-        name: env!("CARGO_PKG_NAME"),
-        version: env!("CARGO_PKG_VERSION"),
+        name: package_info.name.clone(),
+        version: package_info.version.to_string(),
     }
 }
 
@@ -38,6 +43,7 @@ pub async fn get_app_preferences(
         .map(|preferences| AppPreferences {
             confirm_before_exit: preferences.confirm_before_exit,
             color_scheme_id: preferences.color_scheme_id,
+            interface_scale_percent: preferences.interface_scale_percent,
             terminal_semantic_highlighting_enabled: preferences
                 .terminal_semantic_highlighting_enabled,
             terminal_font_id: preferences.terminal_font_id,
@@ -59,6 +65,16 @@ pub async fn update_app_preferences(
             code: "invalid_color_scheme",
             message: "请选择 Connex 支持的全局配色方案。",
             field: Some("colorSchemeId"),
+        });
+    }
+    if !(INTERFACE_SCALE_PERCENT_MIN..=INTERFACE_SCALE_PERCENT_MAX)
+        .contains(&input.interface_scale_percent)
+        || input.interface_scale_percent % INTERFACE_SCALE_PERCENT_STEP != 0
+    {
+        return Err(CommandError {
+            code: "invalid_interface_scale",
+            message: "请选择 Connex 支持的界面缩放比例。",
+            field: Some("interfaceScalePercent"),
         });
     }
     if !(TERMINAL_FONT_WEIGHT_MIN..=TERMINAL_FONT_WEIGHT_MAX).contains(&input.terminal_font_weight)
@@ -92,6 +108,7 @@ pub async fn update_app_preferences(
         .set_preferences(StoredAppPreferences {
             confirm_before_exit: input.confirm_before_exit,
             color_scheme_id: input.color_scheme_id.clone(),
+            interface_scale_percent: input.interface_scale_percent,
             terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
             terminal_font_id: input.terminal_font_id.clone(),
             terminal_font_weight: input.terminal_font_weight,
@@ -103,6 +120,7 @@ pub async fn update_app_preferences(
         .map(|()| AppPreferences {
             confirm_before_exit: input.confirm_before_exit,
             color_scheme_id: input.color_scheme_id,
+            interface_scale_percent: input.interface_scale_percent,
             terminal_semantic_highlighting_enabled: input.terminal_semantic_highlighting_enabled,
             terminal_font_id: input.terminal_font_id,
             terminal_font_weight: input.terminal_font_weight,

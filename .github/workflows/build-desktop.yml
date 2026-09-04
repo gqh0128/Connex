@@ -7,15 +7,206 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: read
 
 concurrency:
   group: desktop-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  prepare_release:
+    name: Prepare draft release
+    runs-on: ubuntu-latest
+    outputs:
+      release_draft: ${{ steps.release.outputs.release_draft }}
+      release_id: ${{ steps.release.outputs.release_id }}
+    steps:
+      - name: Check out repository
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+
+      - name: Verify release version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version="$(jq -r '.version' package.json)"
+          tauri_version="$(jq -r '.version' src-tauri/tauri.conf.json)"
+          cargo_version="$(awk '
+            /^\[package\]$/ { in_package = 1; next }
+            /^\[/ { in_package = 0 }
+            in_package && /^version = / {
+              gsub(/^version = \"|\"$/, "")
+              print
+              exit
+            }
+          ' src-tauri/Cargo.toml)"
+
+          if [[ "$tag_version" != "$package_version" ||
+                "$tag_version" != "$tauri_version" ||
+                "$tag_version" != "$cargo_version" ]]; then
+            echo "Release tag and project versions must match." >&2
+            echo "Tag: $tag_version" >&2
+            echo "package.json: $package_version" >&2
+            echo "src-tauri/tauri.conf.json: $tauri_version" >&2
+            echo "src-tauri/Cargo.toml: $cargo_version" >&2
+            exit 1
+          fi
+
+      - name: Reuse release pull request description
+        id: release
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo
+            const tagName = context.ref.replace('refs/tags/', '')
+            const defaultBranch = context.payload.repository.default_branch
+
+            let tagTarget = (
+              await github.rest.git.getRef({
+                owner,
+                repo,
+                ref: `tags/${tagName}`,
+              })
+            ).data.object
+
+            while (tagTarget.type === 'tag') {
+              tagTarget = (
+                await github.rest.git.getTag({
+                  owner,
+                  repo,
+                  tag_sha: tagTarget.sha,
+                })
+              ).data.object
+            }
+
+            if (tagTarget.type !== 'commit') {
+              core.setFailed(`Tag ${tagName} does not resolve to a commit.`)
+              return
+            }
+
+            const { data: associatedPullRequests } =
+              await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: tagTarget.sha,
+              })
+
+            const releasePullRequest = associatedPullRequests
+              .filter(
+                (pullRequest) =>
+                  pullRequest.merged_at && pullRequest.base.ref === defaultBranch,
+              )
+              .sort((left, right) => {
+                const leftIsDevRelease = left.head.ref === 'dev' ? 1 : 0
+                const rightIsDevRelease = right.head.ref === 'dev' ? 1 : 0
+
+                if (leftIsDevRelease !== rightIsDevRelease) {
+                  return leftIsDevRelease - rightIsDevRelease
+                }
+
+                return (
+                  new Date(left.merged_at).getTime() -
+                  new Date(right.merged_at).getTime()
+                )
+              })
+              .at(-1)
+
+            const pullRequestBody = releasePullRequest?.body?.trim() ?? ''
+            if (!pullRequestBody) {
+              core.warning(
+                `No release PR description was found for ${tagName}; ` +
+                  'the release will use GitHub-generated notes only.',
+              )
+            }
+
+            const { data: generatedNotes } =
+              await github.rest.repos.generateReleaseNotes({
+                owner,
+                repo,
+                tag_name: tagName,
+                target_commitish: tagTarget.sha,
+              })
+
+            const releaseBody = [pullRequestBody, generatedNotes.body.trim()]
+              .filter(Boolean)
+              .join('\n\n---\n\n')
+            const releaseName = `Connex ${tagName}`
+
+            let release
+            try {
+              release = (
+                await github.rest.repos.getReleaseByTag({
+                  owner,
+                  repo,
+                  tag: tagName,
+                })
+              ).data
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error
+              }
+            }
+
+            if (!release) {
+              release = (
+                await github.rest.repos.createRelease({
+                  owner,
+                  repo,
+                  tag_name: tagName,
+                  target_commitish: tagTarget.sha,
+                  name: releaseName,
+                  body: releaseBody,
+                  draft: true,
+                  prerelease: false,
+                })
+              ).data
+            } else if (release.draft) {
+              release = (
+                await github.rest.repos.updateRelease({
+                  owner,
+                  repo,
+                  release_id: release.id,
+                  name: releaseName,
+                  body: releaseBody,
+                  draft: true,
+                  prerelease: false,
+                })
+              ).data
+            } else {
+              core.notice(
+                `${tagName} is already published; preserving its release notes.`,
+              )
+            }
+
+            core.setOutput('release_id', release.id.toString())
+            core.setOutput('release_draft', release.draft.toString())
+            core.summary
+              .addHeading('Release notes source')
+              .addTable([
+                [
+                  { data: 'Release', header: true },
+                  { data: 'Pull request', header: true },
+                  { data: 'Description reused', header: true },
+                ],
+                [
+                  tagName,
+                  releasePullRequest
+                    ? `#${releasePullRequest.number} ${releasePullRequest.title}`
+                    : 'Not found',
+                  pullRequestBody ? 'Yes' : 'No',
+                ],
+              ])
+              .write()
+
   build:
     name: ${{ matrix.name }}
+    needs: prepare_release
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -25,10 +216,12 @@ jobs:
           - name: macOS ARM64
             runner: macos-15
             target: aarch64-apple-darwin
+            bundles: dmg
             apple_signing_identity: "-"
           - name: Windows x64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
             apple_signing_identity: ""
 
     env:
@@ -70,8 +263,47 @@ jobs:
 
       - name: Build and upload packages
         uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: pnpm tauri
-          args: --target ${{ matrix.target }}
-          uploadWorkflowArtifacts: true
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          releaseId: ${{ needs.prepare_release.outputs.release_id }}
+          releaseDraft: ${{ needs.prepare_release.outputs.release_draft || 'false' }}
+          retryAttempts: 2
+          uploadUpdaterJson: false
+          releaseAssetNamePattern: Connex_[version]_[platform]_[arch][setup][ext]
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
           workflowArtifactNamePattern: Connex-[platform]-[arch]-[bundle]
+
+  publish_release:
+    name: Publish release
+    if: github.event_name == 'push'
+    needs:
+      - prepare_release
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish completed release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.prepare_release.outputs.release_id }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo
+            const releaseId = Number.parseInt(process.env.RELEASE_ID, 10)
+
+            if (!Number.isInteger(releaseId)) {
+              core.setFailed('The prepared release ID is missing or invalid.')
+              return
+            }
+
+            const { data: release } = await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id: releaseId,
+              draft: false,
+            })
+
+            core.notice(`Published ${release.name}: ${release.html_url}`)

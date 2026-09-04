@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils";
 
 type StatusBarProps = {
   activeTab: SshSessionTab | null;
+  appVersion: string | null;
 };
 
-export function StatusBar({ activeTab }: StatusBarProps) {
+export function StatusBar({ activeTab, appVersion }: StatusBarProps) {
   const presentation = getSessionPresentation(activeTab);
 
   return (
@@ -32,12 +33,14 @@ export function StatusBar({ activeTab }: StatusBarProps) {
           </span>
         ) : null}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <span className="flex items-center gap-1.5">
           <LockKeyhole className="size-3" />
           本地安全存储
         </span>
-        <span>Connex 0.1.0</span>
+        <span className="w-[4.75rem] text-right tabular-nums">
+          {appVersion ? `Connex ${appVersion}` : "Connex"}
+        </span>
       </div>
     </footer>
   );

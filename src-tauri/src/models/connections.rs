@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::connections::{
-    AuthenticationMethod, ConnectionDraft, ConnectionProfile, ConnectionValidationError,
+    AuthenticationMethod, ConnectionDraft, ConnectionOrigin, ConnectionProfile,
+    ConnectionValidationError,
 };
 use crate::domain::credentials::SecretString;
 use crate::services::connections::ConnectionServiceError;
@@ -25,12 +26,14 @@ pub struct SaveConnectionInput {
     pub private_key_path: Option<String>,
     pub password: Option<String>,
     pub private_key_passphrase: Option<String>,
+    #[serde(default)]
+    pub clear_credential: bool,
 }
 
 impl SaveConnectionInput {
     pub fn into_parts(
         self,
-    ) -> Result<(ConnectionDraft, Option<SecretString>), ConnectionServiceError> {
+    ) -> Result<(ConnectionDraft, Option<SecretString>, bool), ConnectionServiceError> {
         let authentication_method = AuthenticationMethod::from(self.authentication_method);
         let password = self
             .password
@@ -55,7 +58,7 @@ impl SaveConnectionInput {
         )
         .map_err(ConnectionServiceError::from)?;
 
-        Ok((draft, credential))
+        Ok((draft, credential, self.clear_credential))
     }
 }
 
@@ -88,6 +91,22 @@ impl From<AuthenticationMethod> for AuthenticationMethodDto {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ConnectionOriginDto {
+    Manual,
+    SshConfig,
+}
+
+impl From<ConnectionOrigin> for ConnectionOriginDto {
+    fn from(origin: ConnectionOrigin) -> Self {
+        match origin {
+            ConnectionOrigin::Manual => Self::Manual,
+            ConnectionOrigin::SshConfig => Self::SshConfig,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionProfileDto {
@@ -102,6 +121,7 @@ pub struct ConnectionProfileDto {
     pub created_at: String,
     pub updated_at: String,
     pub last_connected_at: Option<String>,
+    pub origin: ConnectionOriginDto,
 }
 
 impl From<ConnectionProfile> for ConnectionProfileDto {
@@ -118,6 +138,7 @@ impl From<ConnectionProfile> for ConnectionProfileDto {
             created_at: profile.created_at,
             updated_at: profile.updated_at,
             last_connected_at: profile.last_connected_at,
+            origin: profile.origin.into(),
         }
     }
 }

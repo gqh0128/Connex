@@ -44,6 +44,7 @@ import { StatusBar } from "./StatusBar";
 import { WIDE_WORKSPACE_QUERY } from "./layoutConstants";
 
 type AppShellProps = {
+  appVersion: string | null;
   isFilePanelOpen: boolean;
   onFilePanelOpenChange: (isOpen: boolean) => void;
   activeView: AppView;
@@ -54,6 +55,7 @@ type AppShellProps = {
   appPreferences: AppPreferences;
   isAppPreferencesLoading: boolean;
   appPreferencesError: string | null;
+  interfaceScaleError: string | null;
   onAppPreferencesChange: (changes: Partial<AppPreferences>) => Promise<AppPreferences>;
   terminalThemeProfileId: TerminalThemeProfileId;
   terminalFonts: TerminalFontsController;
@@ -61,6 +63,7 @@ type AppShellProps = {
 };
 
 export function AppShell({
+  appVersion,
   isFilePanelOpen,
   onFilePanelOpenChange,
   activeView,
@@ -71,6 +74,7 @@ export function AppShell({
   appPreferences,
   isAppPreferencesLoading,
   appPreferencesError,
+  interfaceScaleError,
   onAppPreferencesChange,
   terminalThemeProfileId,
   terminalFonts,
@@ -118,6 +122,11 @@ export function AppShell({
   const openNewConnection = useCallback(() => {
     onViewChange("workspace");
     connectionSidebarRef.current?.openCreateForm();
+  }, [onViewChange]);
+
+  const openSshConfigImport = useCallback(() => {
+    onViewChange("workspace");
+    connectionSidebarRef.current?.openSshConfigImport();
   }, [onViewChange]);
 
   const updateTerminalFontSize = useCallback(
@@ -312,6 +321,7 @@ export function AppShell({
       <AppTitleBar
         activeView={activeView}
         activeContextLabel={sshSessions.activeTab?.profile.name ?? null}
+        interfaceScalePercent={appPreferences.interfaceScalePercent}
         transfers={fileTransfers}
         onPageOpen={onPageOpen}
       />
@@ -411,6 +421,7 @@ export function AppShell({
                         }
                         onFontSizeChange={updateTerminalFontSize}
                         onNewConnection={openNewConnection}
+                        onImportSshConfig={openSshConfigImport}
                         onStart={sshSessions.startSession}
                         onRegisterOutput={sshSessions.registerOutputHandler}
                         onInput={sshSessions.writeInput}
@@ -464,6 +475,7 @@ export function AppShell({
                     appPreferences={appPreferences}
                     isAppPreferencesLoading={isAppPreferencesLoading}
                     appPreferencesError={appPreferencesError}
+                    interfaceScaleError={interfaceScaleError}
                     onAppPreferencesChange={onAppPreferencesChange}
                     terminalThemeProfileId={terminalThemeProfileId}
                     terminalFonts={terminalFonts}
@@ -478,7 +490,7 @@ export function AppShell({
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      <StatusBar activeTab={sshSessions.activeTab} />
+      <StatusBar activeTab={sshSessions.activeTab} appVersion={appVersion} />
 
       <Sheet
         open={activeView === "workspace" && !isWideWorkspace && isFilePanelOpen}

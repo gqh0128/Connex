@@ -1,7 +1,8 @@
 {
   "name": "connex",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
   "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
@@ -15,7 +16,8 @@
     "check": "pnpm typecheck && pnpm lint && pnpm check:rust",
     "preview": "vite preview",
     "shadcn": "pnpm dlx --package=zod@3.25.76 --package=shadcn@4.19.0 shadcn",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "version:set": "node scripts/setVersion.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ExitConfirmationDialog } from "@/app/ExitConfirmationDialog";
+import { useAppInfo } from "@/app/useAppInfo";
 import { useAppPreferences } from "@/app/useAppPreferences";
 import { useExitConfirmation } from "@/app/useExitConfirmation";
+import { useInterfaceScale } from "@/app/useInterfaceScale";
 import { useTheme } from "@/app/useTheme";
 import { AppShell } from "@/components/layout/AppShell";
 import { useSshSessions } from "@/features/terminal/hooks/useSshSessions";
@@ -18,8 +20,13 @@ export function App() {
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [activeView, setActiveView] = useState<AppView>("workspace");
   const [openPageIds, setOpenPageIds] = useState<WorkspacePageId[]>([]);
+  const appInfo = useAppInfo();
   const sshSessions = useSshSessions();
   const appPreferences = useAppPreferences();
+  const interfaceScaleError = useInterfaceScale(
+    appPreferences.preferences.interfaceScalePercent,
+    appPreferences.isLoading,
+  );
   const { setColorSchemeId } = useTheme();
   const terminalFonts = useTerminalFonts(appPreferences.preferences.terminalFontId);
   const exitConfirmation = useExitConfirmation({
@@ -54,6 +61,7 @@ export function App() {
   return (
     <>
       <AppShell
+        appVersion={appInfo?.version ?? null}
         isFilePanelOpen={isFilePanelOpen}
         onFilePanelOpenChange={setIsFilePanelOpen}
         activeView={activeView}
@@ -64,6 +72,7 @@ export function App() {
         appPreferences={appPreferences.preferences}
         isAppPreferencesLoading={appPreferences.isLoading}
         appPreferencesError={appPreferences.error?.message ?? null}
+        interfaceScaleError={interfaceScaleError}
         onAppPreferencesChange={appPreferences.update}
         terminalThemeProfileId={DEFAULT_TERMINAL_THEME_PROFILE_ID}
         terminalFonts={terminalFonts}

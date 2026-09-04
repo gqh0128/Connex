@@ -72,6 +72,20 @@ impl CredentialStore {
         delete_keyring_secret(LEGACY_CREDENTIAL_SERVICE, connection_id).await
     }
 
+    pub async fn migrate_legacy(&self, connection_id: &str) -> Result<(), CredentialStoreError> {
+        if self.repository.get(connection_id).await?.is_some() {
+            return delete_keyring_secret(LEGACY_CREDENTIAL_SERVICE, connection_id).await;
+        }
+
+        let Some(legacy_secret) =
+            get_keyring_secret(LEGACY_CREDENTIAL_SERVICE, connection_id).await?
+        else {
+            return Ok(());
+        };
+        self.set(connection_id, legacy_secret).await?;
+        delete_keyring_secret(LEGACY_CREDENTIAL_SERVICE, connection_id).await
+    }
+
     async fn encrypt(
         &self,
         connection_id: &str,

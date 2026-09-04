@@ -32,6 +32,7 @@ import {
 import type { AppPreferences } from "@/types/app";
 
 import { ConnectionBackupSettings } from "./ConnectionBackupSettings";
+import { InterfaceScaleSetting } from "./InterfaceScaleSetting";
 import { TerminalAppearancePreview } from "./TerminalAppearancePreview";
 import { TerminalFontSettings } from "./TerminalFontSettings";
 import { TerminalTypographySettings } from "./TerminalTypographySettings";
@@ -40,6 +41,7 @@ type SettingsWorkspaceProps = {
   appPreferences: AppPreferences;
   isAppPreferencesLoading: boolean;
   appPreferencesError: string | null;
+  interfaceScaleError: string | null;
   onAppPreferencesChange: (changes: Partial<AppPreferences>) => Promise<AppPreferences>;
   terminalThemeProfileId: TerminalThemeProfileId;
   terminalFonts: TerminalFontsController;
@@ -50,6 +52,7 @@ export function SettingsWorkspace({
   appPreferences,
   isAppPreferencesLoading,
   appPreferencesError,
+  interfaceScaleError,
   onAppPreferencesChange,
   terminalThemeProfileId,
   terminalFonts,
@@ -209,6 +212,16 @@ export function SettingsWorkspace({
                   </ToggleGroupItem>
                 </ToggleGroup>
               </Field>
+
+              <Separator />
+
+              <InterfaceScaleSetting
+                appPreferences={appPreferences}
+                isAppPreferencesLoading={isAppPreferencesLoading}
+                appPreferencesError={appPreferencesError}
+                interfaceScaleError={interfaceScaleError}
+                onAppPreferencesChange={onAppPreferencesChange}
+              />
 
               <Separator />
 

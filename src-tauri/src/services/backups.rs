@@ -10,7 +10,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use crate::domain::connections::{AuthenticationMethod, ConnectionDraft, ConnectionProfile};
+use crate::domain::connections::{
+    AuthenticationMethod, ConnectionDraft, ConnectionOrigin, ConnectionProfile,
+};
 use crate::domain::credentials::SecretString;
 use crate::services::connections::{ConnectionService, ConnectionServiceError};
 
@@ -161,12 +163,13 @@ impl ConnectionBackupService {
             };
             let is_overwrite =
                 has_conflict && conflict_strategy == BackupConflictStrategy::Overwrite;
-            let (draft, credential) = connection.into_parts()?;
+            let (draft, credential, origin) = connection.into_parts()?;
             current_ids.insert(target_id.clone());
             prepared.push(PreparedImport::Ready {
                 target_id,
                 draft,
                 credential,
+                origin,
                 is_overwrite,
                 is_duplicate: has_conflict && conflict_strategy == BackupConflictStrategy::KeepBoth,
             });
@@ -180,11 +183,12 @@ impl ConnectionBackupService {
                     target_id,
                     draft,
                     credential,
+                    origin,
                     is_overwrite,
                     is_duplicate,
                 } => {
                     self.connections
-                        .import_profile(target_id, draft, credential, is_overwrite)
+                        .import_profile(target_id, draft, credential, is_overwrite, origin)
                         .await?;
                     result.imported_count += 1;
                     if is_overwrite {
@@ -235,6 +239,7 @@ enum PreparedImport {
         target_id: String,
         draft: ConnectionDraft,
         credential: Option<SecretString>,
+        origin: ConnectionOrigin,
         is_overwrite: bool,
         is_duplicate: bool,
     },
@@ -288,6 +293,8 @@ struct BackupConnection {
     authentication_method: BackupAuthenticationMethod,
     private_key_path: Option<String>,
     credential: Option<BackupSecret>,
+    #[serde(default)]
+    origin: BackupConnectionOrigin,
 }
 
 impl BackupConnection {
@@ -301,11 +308,15 @@ impl BackupConnection {
             authentication_method: profile.authentication_method.into(),
             private_key_path: profile.private_key_path,
             credential,
+            origin: profile.origin.into(),
         }
     }
 
-    fn into_parts(self) -> Result<(ConnectionDraft, Option<SecretString>), BackupServiceError> {
+    fn into_parts(
+        self,
+    ) -> Result<(ConnectionDraft, Option<SecretString>, ConnectionOrigin), BackupServiceError> {
         let credential = self.credential.map(|secret| secret.0);
+        let origin = self.origin.into();
         let draft = ConnectionDraft::new(
             self.name,
             self.host,
@@ -316,7 +327,33 @@ impl BackupConnection {
         )
         .map_err(|_| BackupServiceError::InvalidBackup)?;
 
-        Ok((draft, credential))
+        Ok((draft, credential, origin))
+    }
+}
+
+#[derive(Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum BackupConnectionOrigin {
+    #[default]
+    Manual,
+    SshConfig,
+}
+
+impl From<ConnectionOrigin> for BackupConnectionOrigin {
+    fn from(origin: ConnectionOrigin) -> Self {
+        match origin {
+            ConnectionOrigin::Manual => Self::Manual,
+            ConnectionOrigin::SshConfig => Self::SshConfig,
+        }
+    }
+}
+
+impl From<BackupConnectionOrigin> for ConnectionOrigin {
+    fn from(origin: BackupConnectionOrigin) -> Self {
+        match origin {
+            BackupConnectionOrigin::Manual => Self::Manual,
+            BackupConnectionOrigin::SshConfig => Self::SshConfig,
+        }
     }
 }
 

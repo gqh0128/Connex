@@ -36,23 +36,27 @@ export function SecretInput({
 }: SecretInputProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [revealedStoredValue, setRevealedStoredValue] = useState<string | null>(null);
-  const isRevealActiveRef = useRef(false);
   const revealRequestRef = useRef(0);
   const displayValue = value || revealedStoredValue || "";
 
   useEffect(() => {
     return () => {
-      isRevealActiveRef.current = false;
       revealRequestRef.current += 1;
     };
   }, []);
 
-  const startReveal = async () => {
-    if (disabled || isRevealActiveRef.current) {
+  const toggleVisibility = async () => {
+    if (disabled) {
       return;
     }
 
-    isRevealActiveRef.current = true;
+    if (isVisible) {
+      revealRequestRef.current += 1;
+      setIsVisible(false);
+      setRevealedStoredValue(null);
+      return;
+    }
+
     setIsVisible(true);
 
     if (value || revealedStoredValue !== null || !onRevealStored) {
@@ -62,24 +66,17 @@ export function SecretInput({
     const requestId = ++revealRequestRef.current;
     try {
       const secret = await onRevealStored();
-      if (isRevealActiveRef.current && revealRequestRef.current === requestId) {
+      if (revealRequestRef.current === requestId) {
         setRevealedStoredValue(secret);
       }
     } catch {
-      if (isRevealActiveRef.current && revealRequestRef.current === requestId) {
+      if (revealRequestRef.current === requestId) {
         setRevealedStoredValue(null);
       }
     }
   };
 
-  const stopReveal = () => {
-    isRevealActiveRef.current = false;
-    revealRequestRef.current += 1;
-    setIsVisible(false);
-    setRevealedStoredValue(null);
-  };
-
-  const label = isVisible ? `隐藏${secretLabel}` : `悬停或聚焦显示${secretLabel}`;
+  const label = isVisible ? `隐藏${secretLabel}` : `显示${secretLabel}`;
   const Icon = isVisible ? EyeOff : Eye;
 
   return (
@@ -103,12 +100,10 @@ export function SecretInput({
             <InputGroupButton
               size="icon-xs"
               aria-label={label}
+              aria-pressed={isVisible}
               disabled={disabled}
               className="opacity-0 transition-opacity group-focus-within/input-group:opacity-100 group-hover/input-group:opacity-100"
-              onPointerEnter={() => void startReveal()}
-              onPointerLeave={stopReveal}
-              onFocus={() => void startReveal()}
-              onBlur={stopReveal}
+              onClick={() => void toggleVisibility()}
             >
               <Icon data-icon="inline-start" />
             </InputGroupButton>

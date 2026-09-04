@@ -24,6 +24,29 @@ impl AuthenticationMethod {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConnectionOrigin {
+    Manual,
+    SshConfig,
+}
+
+impl ConnectionOrigin {
+    pub fn as_storage_value(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::SshConfig => "ssh_config",
+        }
+    }
+
+    pub fn from_storage_value(value: &str) -> Option<Self> {
+        match value {
+            "manual" => Some(Self::Manual),
+            "ssh_config" => Some(Self::SshConfig),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectionProfile {
     pub id: String,
@@ -37,9 +60,10 @@ pub struct ConnectionProfile {
     pub created_at: String,
     pub updated_at: String,
     pub last_connected_at: Option<String>,
+    pub origin: ConnectionOrigin,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ConnectionDraft {
     pub name: String,
     pub host: String,
