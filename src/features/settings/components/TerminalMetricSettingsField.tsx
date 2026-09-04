@@ -107,18 +107,12 @@ export function TerminalMetricSettingsField({
         <FieldError>{displayedError}</FieldError>
       </FieldContent>
 
-      <div className="w-36 shrink-0">
-        <InputGroup size="sm" data-disabled={isDisabled}>
-          <InputGroupAddon>
-            <InputGroupButton
-              size="icon-xs"
-              disabled={isDisabled || value <= min}
-              aria-label={`减小${label}`}
-              onClick={() => void save(adjust(value, "decrease"))}
-            >
-              <Minus data-icon="inline-start" />
-            </InputGroupButton>
-          </InputGroupAddon>
+      <div className="w-36 min-w-36 max-w-36 shrink-0">
+        <InputGroup
+          size="sm"
+          data-disabled={isDisabled}
+          className="w-36 min-w-36 max-w-36"
+        >
           <div className="w-10 shrink-0">
             <InputGroupInput
               id={id}
@@ -146,12 +140,27 @@ export function TerminalMetricSettingsField({
               }}
             />
           </div>
-          <InputGroupAddon align="inline-end">
-            <InputGroupText className="w-11 shrink-0 justify-center truncate">
+          <InputGroupAddon className="shrink-0 gap-0 py-0 pl-0 has-[>button]:ml-0">
+            <InputGroupButton
+              size="icon-xs"
+              className="shrink-0"
+              disabled={isDisabled || value <= min}
+              aria-label={`减小${label}`}
+              onClick={() => void save(adjust(value, "decrease"))}
+            >
+              <Minus data-icon="inline-start" />
+            </InputGroupButton>
+          </InputGroupAddon>
+          <InputGroupAddon
+            align="inline-end"
+            className="w-[calc(100%-4rem)] min-w-[calc(100%-4rem)] max-w-[calc(100%-4rem)] shrink-0 gap-0 py-0 pr-0 has-[>button]:mr-0"
+          >
+            <InputGroupText className="min-w-0 flex-1 justify-center whitespace-nowrap">
               {suffix}
             </InputGroupText>
             <InputGroupButton
               size="icon-xs"
+              className="shrink-0"
               disabled={isDisabled || value >= max}
               aria-label={`增大${label}`}
               onClick={() => void save(adjust(value, "increase"))}
