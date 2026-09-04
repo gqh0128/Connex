@@ -352,7 +352,6 @@ export const ConnectionSidebar = forwardRef<
         onRevealCredential={
           editingConnection ? () => revealCredential(editingConnection.id) : undefined
         }
-        onDelete={editingConnection ? () => remove(editingConnection.id) : undefined}
       />
 
       <ImportSshConfigDialog

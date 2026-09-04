@@ -20,6 +20,7 @@ use infrastructure::ssh_config::SshConfigScanner;
 use infrastructure::terminal_fonts::TerminalFontRepository;
 use managers::sessions::SshSessionManager;
 use services::backups::ConnectionBackupService;
+use services::connection_testing::ConnectionTestService;
 use services::connections::ConnectionService;
 use services::ssh_config_import::SshConfigImportService;
 use services::terminal_fonts::TerminalFontService;
@@ -45,9 +46,10 @@ pub fn run() {
                 credential_store,
                 SshConfigScanner::new(),
             );
-            let session_manager = SshSessionManager::new(SshConnector::new(
-                KnownHostRepository::new(database.clone()),
-            ));
+            let ssh_connector = SshConnector::new(KnownHostRepository::new(database.clone()));
+            let connection_test_service =
+                ConnectionTestService::new(ssh_connector.clone(), connection_service.clone());
+            let session_manager = SshSessionManager::new(ssh_connector);
             let backup_service = ConnectionBackupService::new(connection_service.clone());
             let app_settings_repository = AppSettingsRepository::new(database.clone());
             let terminal_font_service = TerminalFontService::new(
@@ -58,6 +60,7 @@ pub fn run() {
             app.manage(app_settings_repository);
             app.manage(terminal_font_service);
             app.manage(connection_service);
+            app.manage(connection_test_service);
             app.manage(ssh_config_import_service);
             app.manage(backup_service);
             app.manage(session_manager);
@@ -89,6 +92,7 @@ pub fn run() {
             commands::connections::update_connection,
             commands::connections::delete_connection,
             commands::connections::reveal_connection_credential,
+            commands::connection_testing::test_ssh_connection,
             commands::ssh_config::preview_ssh_config_import,
             commands::ssh_config::import_ssh_config,
             commands::sessions::start_ssh_session,

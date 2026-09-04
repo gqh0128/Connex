@@ -96,11 +96,20 @@ impl From<SessionState> for SessionStateDto {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostKeyChallengeDto {
     pub key_algorithm: String,
     pub fingerprint_sha256: String,
+}
+
+impl From<HostKeyChallengeDto> for HostKeyChallenge {
+    fn from(challenge: HostKeyChallengeDto) -> Self {
+        Self {
+            key_algorithm: challenge.key_algorithm,
+            fingerprint_sha256: challenge.fingerprint_sha256,
+        }
+    }
 }
 
 impl From<HostKeyChallenge> for HostKeyChallengeDto {

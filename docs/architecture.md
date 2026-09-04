@@ -38,7 +38,7 @@ React 不直接访问网络、数据库、凭据或任意本地路径。Rust 是
 - `app/`：组合应用、注册全局 provider、处理窗口级快捷键。
 - `components/layout/`：侧栏、统一工作区标签、工作区、状态栏等跨功能布局。
 - `components/ui/`：来自 shadcn/ui 的无业务语义组件。
-- `features/connections/`：连接列表、编辑表单、SSH 配置导入。
+- `features/connections/`：连接列表、编辑表单、独立连接测试和 SSH 配置导入。
 - `features/terminal/`：xterm 实例、输入聚合、输出写入、resize、链接处理、终端主题/字体 profile、字体加载和语义高亮。
 - `features/sftp/`：目录导航、远程文件操作和拖拽入口。
 - `features/transfers/`：上传下载队列、进度、取消和重试。
@@ -77,6 +77,7 @@ IPC 分为控制面和数据面。
 控制面使用普通 Tauri commands，适合：
 
 - 连接配置 CRUD
+- 使用未保存表单参数测试 SSH 握手与认证
 - 打开、关闭、重连会话
 - resize、keepalive 和终端输入
 - SFTP 目录与文件操作
@@ -135,6 +136,8 @@ SSH transport 固定使用 `russh 0.63.x` 的 `ring + rsa + flate2` 特性，避
 连接配置不包含秘密，只保存认证方式、凭据引用和私钥路径。临时输入的密码通过一次命令交给 Rust；从系统凭据读取的密码不返回前端。
 
 首次连接展示主机、端口、算法和 SHA-256 指纹，由用户选择仅本次信任或保存。已保存指纹发生变化时默认拒绝连接，并明确提示潜在中间人风险。
+
+连接表单的测试能力由独立 `ConnectionTestService` 编排，并复用正式会话的 `SshConnector`、认证实现和可信主机仓库。测试参数只在单次 command 的短生命周期内使用，不创建连接记录、会话、PTY 或 SFTP channel；完成 SSH 握手与认证后立即断开。编辑已有连接且凭据留空时由 Rust 侧按连接 ID 读取原凭据，秘密不返回 WebView。未知主机先返回指纹供前端确认，再使用精确匹配的指纹重新测试；选择保存时只在认证成功后写入可信主机记录。测试失败通过结构化结果返回安全的错误代码和完整用户可读信息，不把密码或私钥口令写入错误、日志或持久化状态。
 
 基础导入 `~/.ssh/config` 由独立的 Rust scanner、导入 service 和 SQLite repository 组成，React 只负责预览、选择和提交策略。scanner 按 OpenSSH “先出现的值优先”语义解析 `Host`、`HostName`、`User`、`Port` 和 `IdentityFile`，并在 `~/.ssh` 基准目录下按字典序展开 `Include`；扫描限制为总计 2 MiB、64 个文件和 8 层 Include，循环引用会被忽略并显示警告。只有不含通配符的静态 Host alias 会成为候选项；通配 Host 仍可提供默认值。
 

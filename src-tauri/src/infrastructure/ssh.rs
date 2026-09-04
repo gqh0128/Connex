@@ -16,6 +16,7 @@ use crate::domain::known_hosts::KnownHostKey;
 use crate::domain::sessions::{
     HostKeyChallenge, HostKeyDecision, SessionAuthentication, SessionControl, SessionEvent,
     SessionFailure, SessionFailureCode, SessionSnapshot, SessionState, StartSessionRequest,
+    TestConnectionRequest,
 };
 use crate::infrastructure::known_hosts::KnownHostRepository;
 use crate::infrastructure::sftp::{
@@ -161,6 +162,64 @@ impl SshConnector {
             }
         }
     }
+
+    pub async fn test(&self, request: TestConnectionRequest) -> Result<(), SshTransportError> {
+        let (_cancellation_sender, cancellation) = watch::channel(false);
+        let stream = connect_tcp(&request.host, request.port, cancellation).await?;
+        let known_keys = self
+            .known_hosts
+            .list_for_host(&request.host, request.port)
+            .await
+            .map_err(|_| SshTransportError::KnownHostStorage)?;
+        let accepted_host_key = request.accepted_host_key.clone();
+        let handler = TestHostKeyHandler {
+            known_keys,
+            accepted_host_key: accepted_host_key.clone(),
+        };
+        let config = Arc::new(client::Config {
+            nodelay: true,
+            ..Default::default()
+        });
+        let mut session = timeout(
+            TCP_CONNECT_TIMEOUT,
+            client::connect_stream(config, stream, handler),
+        )
+        .await
+        .map_err(|_| SshTransportError::NetworkUnavailable)??;
+        let authenticated = timeout(
+            AUTHENTICATION_TIMEOUT,
+            authenticate(&mut session, &request.username, request.authentication),
+        )
+        .await
+        .map_err(|_| SshTransportError::AuthenticationTimedOut)??;
+
+        if !authenticated {
+            return Err(SshTransportError::AuthenticationFailed);
+        }
+
+        if request.should_remember_host_key
+            && let Some(challenge) = accepted_host_key
+        {
+            self.known_hosts
+                .save(KnownHostKey {
+                    host: request.host,
+                    port: request.port,
+                    key_algorithm: challenge.key_algorithm,
+                    fingerprint_sha256: challenge.fingerprint_sha256,
+                })
+                .await
+                .map_err(|_| SshTransportError::KnownHostStorage)?;
+        }
+
+        let _ = session
+            .disconnect(
+                Disconnect::ByApplication,
+                "Connex connection test completed",
+                "",
+            )
+            .await;
+        Ok(())
+    }
 }
 
 async fn run_remote_file_loop(
@@ -250,11 +309,14 @@ async fn connect_tcp(
     }
 }
 
-async fn authenticate(
-    session: &mut client::Handle<HostKeyHandler>,
+async fn authenticate<Handler>(
+    session: &mut client::Handle<Handler>,
     username: &str,
     authentication: SessionAuthentication,
-) -> Result<bool, SshTransportError> {
+) -> Result<bool, SshTransportError>
+where
+    Handler: client::Handler<Error = SshTransportError>,
+{
     match authentication {
         SessionAuthentication::Password(password) => session
             .authenticate_password(username, password.take())
@@ -295,10 +357,13 @@ async fn load_private_key(
 }
 
 #[cfg(unix)]
-async fn authenticate_with_agent(
-    session: &mut client::Handle<HostKeyHandler>,
+async fn authenticate_with_agent<Handler>(
+    session: &mut client::Handle<Handler>,
     username: &str,
-) -> Result<bool, SshTransportError> {
+) -> Result<bool, SshTransportError>
+where
+    Handler: client::Handler<Error = SshTransportError>,
+{
     let mut agent = AgentClient::connect_env()
         .await
         .map_err(|_| SshTransportError::AgentUnavailable)?;
@@ -306,10 +371,13 @@ async fn authenticate_with_agent(
 }
 
 #[cfg(windows)]
-async fn authenticate_with_agent(
-    session: &mut client::Handle<HostKeyHandler>,
+async fn authenticate_with_agent<Handler>(
+    session: &mut client::Handle<Handler>,
     username: &str,
-) -> Result<bool, SshTransportError> {
+) -> Result<bool, SshTransportError>
+where
+    Handler: client::Handler<Error = SshTransportError>,
+{
     if let Ok(mut agent) = AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await
         && authenticate_agent_identities(session, username, &mut agent).await?
     {
@@ -322,12 +390,13 @@ async fn authenticate_with_agent(
     authenticate_agent_identities(session, username, &mut pageant).await
 }
 
-async fn authenticate_agent_identities<S>(
-    session: &mut client::Handle<HostKeyHandler>,
+async fn authenticate_agent_identities<Handler, S>(
+    session: &mut client::Handle<Handler>,
     username: &str,
     agent: &mut AgentClient<S>,
 ) -> Result<bool, SshTransportError>
 where
+    Handler: client::Handler<Error = SshTransportError>,
     S: AgentStream + Send + Unpin,
 {
     let identities = agent
@@ -506,6 +575,57 @@ struct HostKeyHandler {
     reporter: SessionReporter,
 }
 
+struct TestHostKeyHandler {
+    known_keys: Vec<KnownHostKey>,
+    accepted_host_key: Option<HostKeyChallenge>,
+}
+
+impl client::Handler for TestHostKeyHandler {
+    type Error = SshTransportError;
+
+    async fn check_server_key(
+        &mut self,
+        server_public_key: &PublicKeyOrCertificate,
+    ) -> Result<bool, Self::Error> {
+        let public_key = server_public_key.public_key();
+        let key_algorithm = public_key.algorithm().as_str().to_owned();
+        let fingerprint_sha256 = public_key.fingerprint(HashAlg::Sha256).to_string();
+
+        if let Some(known_key) = self
+            .known_keys
+            .iter()
+            .find(|known_key| known_key.key_algorithm == key_algorithm)
+        {
+            if known_key.fingerprint_sha256 == fingerprint_sha256 {
+                return Ok(true);
+            }
+
+            return Err(SshTransportError::HostKeyChanged {
+                expected: known_key.fingerprint_sha256.clone(),
+                presented: fingerprint_sha256,
+            });
+        }
+
+        if let Some(accepted_host_key) = &self.accepted_host_key {
+            if accepted_host_key.key_algorithm == key_algorithm
+                && accepted_host_key.fingerprint_sha256 == fingerprint_sha256
+            {
+                return Ok(true);
+            }
+
+            return Err(SshTransportError::HostKeyChanged {
+                expected: accepted_host_key.fingerprint_sha256.clone(),
+                presented: fingerprint_sha256,
+            });
+        }
+
+        Err(SshTransportError::HostKeyUnknown(HostKeyChallenge {
+            key_algorithm,
+            fingerprint_sha256,
+        }))
+    }
+}
+
 impl client::Handler for HostKeyHandler {
     type Error = SshTransportError;
 
@@ -579,6 +699,7 @@ pub enum SshTransportError {
     Russh(russh::Error),
     NetworkUnavailable,
     KnownHostStorage,
+    HostKeyUnknown(HostKeyChallenge),
     HostKeyChanged { expected: String, presented: String },
     HostKeyRejected,
     HostVerificationTimedOut,
@@ -601,6 +722,10 @@ impl SshTransportError {
             Self::KnownHostStorage => (
                 SessionFailureCode::Internal,
                 "无法读取或保存可信主机记录。".to_owned(),
+            ),
+            Self::HostKeyUnknown(_) => (
+                SessionFailureCode::HostVerificationFailed,
+                "需要先确认服务器主机密钥指纹。".to_owned(),
             ),
             Self::HostKeyChanged {
                 expected,
@@ -664,6 +789,7 @@ impl fmt::Display for SshTransportError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Russh(error) => write!(formatter, "SSH protocol error: {error}"),
+            Self::HostKeyUnknown(_) => formatter.write_str("SSH host key is not trusted"),
             Self::HostKeyChanged { .. } => formatter.write_str("SSH host key changed"),
             Self::HostKeyRejected => formatter.write_str("SSH host key rejected"),
             Self::HostVerificationTimedOut => {

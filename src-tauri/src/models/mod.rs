@@ -1,5 +1,6 @@
 pub mod app;
 pub mod backups;
+pub mod connection_testing;
 pub mod connections;
 pub mod error;
 pub mod sessions;

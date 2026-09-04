@@ -1,4 +1,4 @@
-use crate::domain::connections::{AuthenticationMethod, ConnectionProfile};
+use crate::domain::connections::{AuthenticationMethod, ConnectionDraft, ConnectionProfile};
 use crate::domain::credentials::SecretString;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -135,6 +135,35 @@ pub enum SessionAuthentication {
     Agent,
 }
 
+impl SessionAuthentication {
+    fn from_connection_parts(
+        authentication_method: AuthenticationMethod,
+        private_key_path: Option<String>,
+        credential: Option<SecretString>,
+    ) -> Result<Self, SessionValidationError> {
+        match authentication_method {
+            AuthenticationMethod::Password => {
+                let password = credential.ok_or(SessionValidationError {
+                    field: "password",
+                    message: "当前连接没有可用的密码。",
+                })?;
+                Ok(Self::Password(password))
+            }
+            AuthenticationMethod::PrivateKey => {
+                let path = private_key_path.ok_or(SessionValidationError {
+                    field: "privateKeyPath",
+                    message: "当前连接没有可用的私钥路径。",
+                })?;
+                Ok(Self::PrivateKey {
+                    path,
+                    passphrase: credential,
+                })
+            }
+            AuthenticationMethod::Agent => Ok(Self::Agent),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct StartSessionRequest {
     pub profile: ConnectionProfile,
@@ -148,34 +177,50 @@ impl StartSessionRequest {
         credential: Option<SecretString>,
         terminal_size: TerminalSize,
     ) -> Result<Self, SessionValidationError> {
-        let authentication = match profile.authentication_method {
-            AuthenticationMethod::Password => {
-                let password = credential.ok_or(SessionValidationError {
-                    field: "password",
-                    message: "当前连接没有已保存的密码，请编辑连接并补充密码。",
-                })?;
-                SessionAuthentication::Password(password)
-            }
-            AuthenticationMethod::PrivateKey => {
-                let path = profile
-                    .private_key_path
-                    .clone()
-                    .ok_or(SessionValidationError {
-                        field: "privateKeyPath",
-                        message: "当前连接没有可用的私钥路径。",
-                    })?;
-                SessionAuthentication::PrivateKey {
-                    path,
-                    passphrase: credential,
-                }
-            }
-            AuthenticationMethod::Agent => SessionAuthentication::Agent,
-        };
+        let authentication = SessionAuthentication::from_connection_parts(
+            profile.authentication_method,
+            profile.private_key_path.clone(),
+            credential,
+        )?;
 
         Ok(Self {
             profile,
             authentication,
             terminal_size,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct TestConnectionRequest {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub authentication: SessionAuthentication,
+    pub accepted_host_key: Option<HostKeyChallenge>,
+    pub should_remember_host_key: bool,
+}
+
+impl TestConnectionRequest {
+    pub fn new(
+        draft: ConnectionDraft,
+        credential: Option<SecretString>,
+        accepted_host_key: Option<HostKeyChallenge>,
+        should_remember_host_key: bool,
+    ) -> Result<Self, SessionValidationError> {
+        let authentication = SessionAuthentication::from_connection_parts(
+            draft.authentication_method,
+            draft.private_key_path,
+            credential,
+        )?;
+
+        Ok(Self {
+            host: draft.host,
+            port: draft.port,
+            username: draft.username,
+            authentication,
+            accepted_host_key,
+            should_remember_host_key,
         })
     }
 }

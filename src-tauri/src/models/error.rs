@@ -3,6 +3,7 @@ use serde::Serialize;
 use crate::infrastructure::app_settings::AppSettingsRepositoryError;
 use crate::managers::sessions::SessionManagerError;
 use crate::services::backups::BackupServiceError;
+use crate::services::connection_testing::ConnectionTestServiceError;
 use crate::services::connections::ConnectionServiceError;
 use crate::services::ssh_config_import::SshConfigImportError;
 use crate::services::terminal_fonts::TerminalFontServiceError;
@@ -95,6 +96,19 @@ impl From<ConnectionServiceError> for CommandError {
                 message: "系统凭据存储暂时无法访问，请检查系统安全设置后重试。",
                 field: None,
             },
+        }
+    }
+}
+
+impl From<ConnectionTestServiceError> for CommandError {
+    fn from(error: ConnectionTestServiceError) -> Self {
+        match error {
+            ConnectionTestServiceError::InvalidInput { field, message } => Self {
+                code: "invalid_connection_test",
+                message,
+                field: Some(field),
+            },
+            ConnectionTestServiceError::Connection(error) => error.into(),
         }
     }
 }
