@@ -1,4 +1,4 @@
-import { Check, Copy, LoaderCircle, ShieldAlert, XCircle } from "lucide-react";
+import { Check, Copy, LoaderCircle, ShieldAlert } from "lucide-react";
 import { useRef, useState } from "react";
 
 import {
@@ -234,29 +234,25 @@ export function ConnectionTestControls({
       </AlertDialog>
 
       <AlertDialog open={isFailureOpen} onOpenChange={setIsFailureOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                <XCircle className="size-5" aria-hidden="true" />
-              </div>
-              <AlertDialogTitle>连接失败</AlertDialogTitle>
-            </div>
+        <AlertDialogContent className="max-w-md gap-3 p-4">
+          <AlertDialogHeader className="gap-1.5">
+            <AlertDialogTitle>连接失败</AlertDialogTitle>
             <AlertDialogDescription>
               测试未通过，请检查以下错误信息后修改连接参数。
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           {failure ? (
-            <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-destructive/20 bg-destructive/5 p-3 font-mono text-xs leading-5 text-destructive">
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-destructive/20 bg-destructive/5 p-2.5 font-mono text-xs leading-5 text-destructive">
               {failure.message}
             </pre>
           ) : null}
 
-          <AlertDialogFooter>
+          <AlertDialogFooter className="gap-1.5 pt-1">
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => {
                 if (failure) {
                   void writeClipboardText(failure.message).catch(() => undefined);
@@ -266,7 +262,7 @@ export function ConnectionTestControls({
               <Copy data-icon="inline-start" />
               复制错误
             </Button>
-            <Button type="button" onClick={() => setIsFailureOpen(false)}>
+            <Button type="button" size="sm" onClick={() => setIsFailureOpen(false)}>
               关闭
             </Button>
           </AlertDialogFooter>

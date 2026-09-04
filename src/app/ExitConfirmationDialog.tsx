@@ -1,5 +1,3 @@
-import { LogOut } from "lucide-react";
-
 import type { ExitConfirmationController } from "@/app/useExitConfirmation";
 import {
   AlertDialog,
@@ -33,20 +31,19 @@ export function ExitConfirmationDialog({ controller }: ExitConfirmationDialogPro
         }
       }}
     >
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader className="gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
-              <LogOut className="size-4.5" />
-            </div>
-            <AlertDialogTitle>退出 Connex？</AlertDialogTitle>
-          </div>
+      <AlertDialogContent className="max-w-sm gap-3 p-4">
+        <AlertDialogHeader className="gap-1.5">
+          <AlertDialogTitle>退出 Connex？</AlertDialogTitle>
           <AlertDialogDescription>
             当前 SSH 会话和正在进行的文件传输都会被关闭。
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <Field orientation="horizontal" data-disabled={controller.isExiting}>
+        <Field
+          orientation="horizontal"
+          className="gap-2"
+          data-disabled={controller.isExiting}
+        >
           <Checkbox
             id="remember-exit-choice"
             checked={controller.shouldRememberChoice}
@@ -55,7 +52,7 @@ export function ExitConfirmationDialog({ controller }: ExitConfirmationDialogPro
               controller.setShouldRememberChoice(checked === true)
             }
           />
-          <FieldContent>
+          <FieldContent className="gap-0.5">
             <FieldLabel htmlFor="remember-exit-choice">记住我的选择</FieldLabel>
             <FieldDescription>以后关闭窗口时直接退出，不再询问。</FieldDescription>
           </FieldContent>
@@ -67,10 +64,13 @@ export function ExitConfirmationDialog({ controller }: ExitConfirmationDialogPro
           </p>
         ) : null}
 
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={controller.isExiting}>取消</AlertDialogCancel>
+        <AlertDialogFooter className="gap-1.5 pt-1">
+          <AlertDialogCancel size="sm" disabled={controller.isExiting}>
+            取消
+          </AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
+            size="sm"
             disabled={controller.isExiting}
             onClick={(event) => {
               event.preventDefault();
