@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::connections::{
-    AuthenticationMethod, ConnectionDraft, ConnectionProfile, ConnectionValidationError,
+    AuthenticationMethod, ConnectionDraft, ConnectionOrigin, ConnectionProfile,
+    ConnectionValidationError,
 };
 use crate::domain::credentials::SecretString;
 use crate::services::connections::ConnectionServiceError;
@@ -88,6 +89,22 @@ impl From<AuthenticationMethod> for AuthenticationMethodDto {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ConnectionOriginDto {
+    Manual,
+    SshConfig,
+}
+
+impl From<ConnectionOrigin> for ConnectionOriginDto {
+    fn from(origin: ConnectionOrigin) -> Self {
+        match origin {
+            ConnectionOrigin::Manual => Self::Manual,
+            ConnectionOrigin::SshConfig => Self::SshConfig,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionProfileDto {
@@ -102,6 +119,7 @@ pub struct ConnectionProfileDto {
     pub created_at: String,
     pub updated_at: String,
     pub last_connected_at: Option<String>,
+    pub origin: ConnectionOriginDto,
 }
 
 impl From<ConnectionProfile> for ConnectionProfileDto {
@@ -118,6 +136,7 @@ impl From<ConnectionProfile> for ConnectionProfileDto {
             created_at: profile.created_at,
             updated_at: profile.updated_at,
             last_connected_at: profile.last_connected_at,
+            origin: profile.origin.into(),
         }
     }
 }

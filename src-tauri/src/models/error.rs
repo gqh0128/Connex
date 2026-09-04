@@ -4,6 +4,7 @@ use crate::infrastructure::app_settings::AppSettingsRepositoryError;
 use crate::managers::sessions::SessionManagerError;
 use crate::services::backups::BackupServiceError;
 use crate::services::connections::ConnectionServiceError;
+use crate::services::ssh_config_import::SshConfigImportError;
 use crate::services::terminal_fonts::TerminalFontServiceError;
 
 #[derive(Debug, Serialize)]
@@ -92,6 +93,53 @@ impl From<ConnectionServiceError> for CommandError {
             ConnectionServiceError::Credentials => Self {
                 code: "credential_storage_unavailable",
                 message: "系统凭据存储暂时无法访问，请检查系统安全设置后重试。",
+                field: None,
+            },
+        }
+    }
+}
+
+impl From<SshConfigImportError> for CommandError {
+    fn from(error: SshConfigImportError) -> Self {
+        match error {
+            SshConfigImportError::InvalidInput { field, message } => Self {
+                code: "invalid_ssh_config_import",
+                message,
+                field: Some(field),
+            },
+            SshConfigImportError::HomeUnavailable => Self {
+                code: "home_directory_unavailable",
+                message: "无法确定当前用户的主目录。",
+                field: None,
+            },
+            SshConfigImportError::NotFound => Self {
+                code: "ssh_config_not_found",
+                message: "未找到 ~/.ssh/config，请确认文件已创建。",
+                field: None,
+            },
+            SshConfigImportError::FileUnavailable => Self {
+                code: "ssh_config_unavailable",
+                message: "无法读取 SSH config，请检查文件权限和 Include 路径。",
+                field: None,
+            },
+            SshConfigImportError::TooLarge => Self {
+                code: "ssh_config_too_large",
+                message: "SSH config 超出安全扫描范围（最多 2 MB、64 个文件、8 层 Include）。",
+                field: None,
+            },
+            SshConfigImportError::ConfigChanged => Self {
+                code: "ssh_config_changed",
+                message: "SSH config 在预览后发生了变化，请重新扫描再导入。",
+                field: None,
+            },
+            SshConfigImportError::Storage => Self {
+                code: "connection_storage_unavailable",
+                message: "连接数据暂时无法访问，请稍后重试。",
+                field: None,
+            },
+            SshConfigImportError::Credentials => Self {
+                code: "credential_storage_unavailable",
+                message: "无法安全清理被覆盖连接的旧凭据，请检查系统安全设置后重试。",
                 field: None,
             },
         }

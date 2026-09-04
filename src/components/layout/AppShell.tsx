@@ -122,6 +122,11 @@ export function AppShell({
     connectionSidebarRef.current?.openCreateForm();
   }, [onViewChange]);
 
+  const openSshConfigImport = useCallback(() => {
+    onViewChange("workspace");
+    connectionSidebarRef.current?.openSshConfigImport();
+  }, [onViewChange]);
+
   const updateTerminalFontSize = useCallback(
     async (fontSize: number) =>
       (await onAppPreferencesChange({ terminalFontSize: fontSize })).terminalFontSize,
@@ -414,6 +419,7 @@ export function AppShell({
                         }
                         onFontSizeChange={updateTerminalFontSize}
                         onNewConnection={openNewConnection}
+                        onImportSshConfig={openSshConfigImport}
                         onStart={sshSessions.startSession}
                         onRegisterOutput={sshSessions.registerOutputHandler}
                         onInput={sshSessions.writeInput}

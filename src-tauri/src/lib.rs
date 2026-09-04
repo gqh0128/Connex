@@ -16,10 +16,12 @@ use infrastructure::credentials::CredentialStore;
 use infrastructure::database::Database;
 use infrastructure::known_hosts::KnownHostRepository;
 use infrastructure::ssh::SshConnector;
+use infrastructure::ssh_config::SshConfigScanner;
 use infrastructure::terminal_fonts::TerminalFontRepository;
 use managers::sessions::SshSessionManager;
 use services::backups::ConnectionBackupService;
 use services::connections::ConnectionService;
+use services::ssh_config_import::SshConfigImportService;
 use services::terminal_fonts::TerminalFontService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -34,9 +36,14 @@ pub fn run() {
             let database = tauri::async_runtime::block_on(Database::open(
                 app_data_dir.join("connex.sqlite3"),
             ))?;
-            let connection_service = ConnectionService::new(
-                ConnectionRepository::new(database.clone()),
-                CredentialStore::new(database.clone()),
+            let connection_repository = ConnectionRepository::new(database.clone());
+            let credential_store = CredentialStore::new(database.clone());
+            let connection_service =
+                ConnectionService::new(connection_repository.clone(), credential_store.clone());
+            let ssh_config_import_service = SshConfigImportService::new(
+                connection_repository,
+                credential_store,
+                SshConfigScanner::new(),
             );
             let session_manager = SshSessionManager::new(SshConnector::new(
                 KnownHostRepository::new(database.clone()),
@@ -51,6 +58,7 @@ pub fn run() {
             app.manage(app_settings_repository);
             app.manage(terminal_font_service);
             app.manage(connection_service);
+            app.manage(ssh_config_import_service);
             app.manage(backup_service);
             app.manage(session_manager);
 
@@ -81,6 +89,8 @@ pub fn run() {
             commands::connections::update_connection,
             commands::connections::delete_connection,
             commands::connections::reveal_connection_credential,
+            commands::ssh_config::preview_ssh_config_import,
+            commands::ssh_config::import_ssh_config,
             commands::sessions::start_ssh_session,
             commands::sessions::get_ssh_session,
             commands::sessions::decide_ssh_host_key,

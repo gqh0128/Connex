@@ -2,7 +2,10 @@ use std::fmt;
 
 use tokio_rusqlite::{Connection, OptionalExtension, params};
 
-use crate::domain::connections::{AuthenticationMethod, ConnectionDraft, ConnectionProfile};
+use crate::domain::connections::{
+    AuthenticationMethod, ConnectionDraft, ConnectionOrigin, ConnectionProfile,
+};
+use crate::domain::ssh_config::ConnectionImportMutation;
 use crate::infrastructure::database::Database;
 
 #[derive(Clone)]
@@ -24,7 +27,7 @@ impl ConnectionRepository {
                 |database| -> tokio_rusqlite::rusqlite::Result<Vec<ConnectionRecord>> {
                     let mut statement = database.prepare(
                         "SELECT id, name, host, port, username, authentication_method, \
-                     private_key_path, has_stored_credential, created_at, updated_at, last_connected_at \
+                     private_key_path, has_stored_credential, created_at, updated_at, last_connected_at, origin \
                      FROM connection_profiles \
                      ORDER BY COALESCE(last_connected_at, updated_at) DESC, name COLLATE NOCASE",
                     )?;
@@ -73,6 +76,7 @@ impl ConnectionRepository {
         id: String,
         draft: ConnectionDraft,
         has_stored_credential: bool,
+        origin: ConnectionOrigin,
     ) -> Result<ConnectionProfile, ConnectionRepositoryError> {
         let authentication_method = draft.authentication_method.as_storage_value().to_owned();
         let record = self
@@ -82,8 +86,8 @@ impl ConnectionRepository {
                     database.execute(
                         "INSERT INTO connection_profiles (\
                         id, name, host, port, username, authentication_method, private_key_path, \
-                        has_stored_credential\
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        has_stored_credential, origin\
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                         params![
                             id,
                             draft.name,
@@ -93,6 +97,7 @@ impl ConnectionRepository {
                             authentication_method,
                             draft.private_key_path,
                             has_stored_credential,
+                            origin.as_storage_value(),
                         ],
                     )?;
 
@@ -111,6 +116,7 @@ impl ConnectionRepository {
         id: String,
         draft: ConnectionDraft,
         has_stored_credential: bool,
+        origin: Option<ConnectionOrigin>,
     ) -> Result<ConnectionProfile, ConnectionRepositoryError> {
         let authentication_method = draft.authentication_method.as_storage_value().to_owned();
         let record = self
@@ -121,7 +127,7 @@ impl ConnectionRepository {
                         "UPDATE connection_profiles SET \
                         name = ?2, host = ?3, port = ?4, username = ?5, \
                         authentication_method = ?6, private_key_path = ?7, \
-                        has_stored_credential = ?8, \
+                        has_stored_credential = ?8, origin = COALESCE(?9, origin), \
                         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
                      WHERE id = ?1",
                         params![
@@ -133,6 +139,7 @@ impl ConnectionRepository {
                             authentication_method,
                             draft.private_key_path,
                             has_stored_credential,
+                            origin.map(ConnectionOrigin::as_storage_value),
                         ],
                     )?;
 
@@ -165,6 +172,36 @@ impl ConnectionRepository {
 
         Ok(())
     }
+
+    pub async fn apply_import(
+        &self,
+        mutations: Vec<ConnectionImportMutation>,
+    ) -> Result<(), ConnectionRepositoryError> {
+        self.connection
+            .call(move |database| -> tokio_rusqlite::rusqlite::Result<()> {
+                let transaction = database.transaction()?;
+                for mutation in mutations {
+                    match mutation {
+                        ConnectionImportMutation::Create { id, draft } => {
+                            insert_imported_profile(&transaction, &id, draft)?;
+                        }
+                        ConnectionImportMutation::Overwrite { id, draft } => {
+                            transaction.execute(
+                                "DELETE FROM connection_credentials WHERE connection_id = ?1",
+                                [&id],
+                            )?;
+                            let changed = update_imported_profile(&transaction, &id, draft)?;
+                            if changed == 0 {
+                                return Err(tokio_rusqlite::rusqlite::Error::QueryReturnedNoRows);
+                            }
+                        }
+                    }
+                }
+                transaction.commit()
+            })
+            .await
+            .map_err(|_| ConnectionRepositoryError::Storage)
+    }
 }
 
 #[derive(Debug)]
@@ -196,6 +233,7 @@ struct ConnectionRecord {
     created_at: String,
     updated_at: String,
     last_connected_at: Option<String>,
+    origin: String,
 }
 
 impl ConnectionRecord {
@@ -212,6 +250,7 @@ impl ConnectionRecord {
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
             last_connected_at: row.get(10)?,
+            origin: row.get(11)?,
         })
     }
 }
@@ -224,6 +263,8 @@ impl TryFrom<ConnectionRecord> for ConnectionProfile {
         let authentication_method =
             AuthenticationMethod::from_storage_value(&record.authentication_method)
                 .ok_or(ConnectionRepositoryError::Storage)?;
+        let origin = ConnectionOrigin::from_storage_value(&record.origin)
+            .ok_or(ConnectionRepositoryError::Storage)?;
 
         Ok(Self {
             id: record.id,
@@ -237,6 +278,7 @@ impl TryFrom<ConnectionRecord> for ConnectionProfile {
             created_at: record.created_at,
             updated_at: record.updated_at,
             last_connected_at: record.last_connected_at,
+            origin,
         })
     }
 }
@@ -248,10 +290,57 @@ fn select_by_id(
     database
         .query_row(
             "SELECT id, name, host, port, username, authentication_method, \
-             private_key_path, has_stored_credential, created_at, updated_at, last_connected_at \
+             private_key_path, has_stored_credential, created_at, updated_at, last_connected_at, origin \
              FROM connection_profiles WHERE id = ?1",
             [id],
             ConnectionRecord::from_row,
         )
         .optional()
+}
+
+fn insert_imported_profile(
+    database: &tokio_rusqlite::rusqlite::Connection,
+    id: &str,
+    draft: ConnectionDraft,
+) -> tokio_rusqlite::rusqlite::Result<()> {
+    database.execute(
+        "INSERT INTO connection_profiles (\
+            id, name, host, port, username, authentication_method, private_key_path, \
+            has_stored_credential, origin\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 'ssh_config')",
+        params![
+            id,
+            draft.name,
+            draft.host,
+            draft.port,
+            draft.username,
+            draft.authentication_method.as_storage_value(),
+            draft.private_key_path,
+        ],
+    )?;
+    Ok(())
+}
+
+fn update_imported_profile(
+    database: &tokio_rusqlite::rusqlite::Connection,
+    id: &str,
+    draft: ConnectionDraft,
+) -> tokio_rusqlite::rusqlite::Result<usize> {
+    database.execute(
+        "UPDATE connection_profiles SET \
+            name = ?2, host = ?3, port = ?4, username = ?5, \
+            authentication_method = ?6, private_key_path = ?7, \
+            has_stored_credential = 0, origin = 'ssh_config', \
+            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
+         WHERE id = ?1",
+        params![
+            id,
+            draft.name,
+            draft.host,
+            draft.port,
+            draft.username,
+            draft.authentication_method.as_storage_value(),
+            draft.private_key_path,
+        ],
+    )
 }

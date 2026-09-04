@@ -17,6 +17,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../migrations/0011_add_color_scheme.sql"),
     include_str!("../../migrations/0012_add_interface_scale.sql"),
     include_str!("../../migrations/0013_expand_interface_scale_range.sql"),
+    include_str!("../../migrations/0014_add_connection_origin.sql"),
 ];
 
 #[derive(Clone)]

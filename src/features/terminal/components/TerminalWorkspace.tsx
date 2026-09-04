@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, FileInput } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,7 @@ type TerminalWorkspaceProps = {
   isFontSizeShortcutsEnabled: boolean;
   onFontSizeChange: (fontSize: number) => Promise<number>;
   onNewConnection: () => void;
+  onImportSshConfig: () => void;
   onStart: (localId: string, dimensions: TerminalDimensions) => Promise<void>;
   onRegisterOutput: (localId: string, handler: SessionOutputHandler) => () => void;
   onInput: (localId: string, data: Uint8Array) => Promise<void>;
@@ -54,6 +55,7 @@ export function TerminalWorkspace({
   isFontSizeShortcutsEnabled,
   onFontSizeChange,
   onNewConnection,
+  onImportSshConfig,
   onStart,
   onRegisterOutput,
   onInput,
@@ -77,10 +79,16 @@ export function TerminalWorkspace({
           </EmptyHeader>
 
           <EmptyContent className="gap-3">
-            <Button type="button" onClick={onNewConnection}>
-              新建 SSH 连接
-              <ArrowRight data-icon="inline-end" />
-            </Button>
+            <div className="flex items-center justify-center gap-2">
+              <Button type="button" onClick={onNewConnection}>
+                新建 SSH 连接
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+              <Button type="button" variant="outline" onClick={onImportSshConfig}>
+                <FileInput data-icon="inline-start" />
+                导入 SSH config
+              </Button>
+            </div>
             <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
               <span>也可以按</span>
               <kbd className="rounded border bg-surface px-1.5 py-0.5 font-mono text-[10px]">

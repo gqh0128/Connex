@@ -136,7 +136,9 @@ SSH transport 固定使用 `russh 0.63.x` 的 `ring + rsa + flate2` 特性，避
 
 首次连接展示主机、端口、算法和 SHA-256 指纹，由用户选择仅本次信任或保存。已保存指纹发生变化时默认拒绝连接，并明确提示潜在中间人风险。
 
-基础导入 `~/.ssh/config` 只承诺 `Host`、`HostName`、`User`、`Port` 和 `IdentityFile`。`Include` 可逐步支持；`Match`、`ProxyCommand` 和 `ProxyJump` 暂不宣称完整兼容。
+基础导入 `~/.ssh/config` 由独立的 Rust scanner、导入 service 和 SQLite repository 组成，React 只负责预览、选择和提交策略。scanner 按 OpenSSH “先出现的值优先”语义解析 `Host`、`HostName`、`User`、`Port` 和 `IdentityFile`，并在 `~/.ssh` 基准目录下按字典序展开 `Include`；扫描限制为总计 2 MiB、64 个文件和 8 层 Include，循环引用会被忽略并显示警告。只有不含通配符的静态 Host alias 会成为候选项；通配 Host 仍可提供默认值。
+
+预览按连接名称进行不区分大小写的冲突检测，并保留来源文件、行号、解析警告和明确的跳过原因。`Match` 条件块不参与基础导入；使用 `ProxyCommand`、`ProxyJump`、无效端口或未解析动态令牌的候选项必须标记跳过，不能静默降级为直接连接。导入只创建 Agent 或私钥认证连接，不读取或推断密码、口令。用户可以逐项选择，并对同名连接统一采用覆盖、跳过或保留两份；保留两份由 service 生成不重复名称。预览返回覆盖全部展开配置的 SHA-256 指纹，提交时重新扫描并校验指纹和当前数据库冲突；新增、覆盖及覆盖时清除旧凭据必须在单个 SQLite 事务中完成，不能产生部分批次。连接配置持久化 `manual` 或 `ssh_config` 来源：普通新建和历史连接默认为手动来源，SSH config 新增或覆盖写入导入来源，普通编辑不改变来源；版本化连接备份携带该字段，并把旧备份缺失来源安全解释为手动添加。
 
 ## 8. SFTP 与传输模型
 

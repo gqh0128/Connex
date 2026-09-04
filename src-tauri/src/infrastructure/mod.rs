@@ -5,5 +5,6 @@ pub mod database;
 pub mod known_hosts;
 pub mod sftp;
 pub mod ssh;
+pub mod ssh_config;
 pub mod system_fonts;
 pub mod terminal_fonts;

@@ -1,4 +1,5 @@
 export type AuthenticationMethod = "password" | "privateKey" | "agent";
+export type ConnectionOrigin = "manual" | "sshConfig";
 
 export type ConnectionMetadataInput = {
   name: string;
@@ -20,4 +21,5 @@ export type ConnectionProfile = ConnectionMetadataInput & {
   createdAt: string;
   updatedAt: string;
   lastConnectedAt: string | null;
+  origin: ConnectionOrigin;
 };

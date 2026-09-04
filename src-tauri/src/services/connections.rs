@@ -1,6 +1,8 @@
 use uuid::Uuid;
 
-use crate::domain::connections::{AuthenticationMethod, ConnectionDraft, ConnectionProfile};
+use crate::domain::connections::{
+    AuthenticationMethod, ConnectionDraft, ConnectionOrigin, ConnectionProfile,
+};
 use crate::domain::credentials::SecretString;
 use crate::infrastructure::connections::{ConnectionRepository, ConnectionRepositoryError};
 use crate::infrastructure::credentials::{CredentialStore, CredentialStoreError};
@@ -46,7 +48,12 @@ impl ConnectionService {
 
         match self
             .repository
-            .create(id.clone(), draft, has_stored_credential)
+            .create(
+                id.clone(),
+                draft,
+                has_stored_credential,
+                ConnectionOrigin::Manual,
+            )
             .await
         {
             Ok(profile) => Ok(profile),
@@ -67,7 +74,7 @@ impl ConnectionService {
     ) -> Result<ConnectionProfile, ConnectionServiceError> {
         let current = self.repository.get(id.clone()).await?;
         let mutation = credential_mutation(&current, &draft, credential)?;
-        self.update_with_mutation(id, draft, current, mutation)
+        self.update_with_mutation(id, draft, current, mutation, None)
             .await
     }
 
@@ -88,6 +95,7 @@ impl ConnectionService {
         draft: ConnectionDraft,
         credential: Option<SecretString>,
         overwrite: bool,
+        origin: ConnectionOrigin,
     ) -> Result<ConnectionProfile, ConnectionServiceError> {
         if self.repository.contains(id.clone()).await? {
             if !overwrite {
@@ -97,11 +105,11 @@ impl ConnectionService {
             let current = self.repository.get(id.clone()).await?;
             let mutation = credential_mutation_for_import(&current, &draft, credential);
             return self
-                .update_with_mutation(id, draft, current, mutation)
+                .update_with_mutation(id, draft, current, mutation, Some(origin))
                 .await;
         }
 
-        self.create_with_id(id, draft, credential).await
+        self.create_with_id(id, draft, credential, origin).await
     }
 
     async fn create_with_id(
@@ -109,6 +117,7 @@ impl ConnectionService {
         id: String,
         draft: ConnectionDraft,
         credential: Option<SecretString>,
+        origin: ConnectionOrigin,
     ) -> Result<ConnectionProfile, ConnectionServiceError> {
         let has_stored_credential = credential.is_some();
         if let Some(credential) = credential {
@@ -117,7 +126,7 @@ impl ConnectionService {
 
         match self
             .repository
-            .create(id.clone(), draft, has_stored_credential)
+            .create(id.clone(), draft, has_stored_credential, origin)
             .await
         {
             Ok(profile) => Ok(profile),
@@ -136,6 +145,7 @@ impl ConnectionService {
         draft: ConnectionDraft,
         current: ConnectionProfile,
         mutation: CredentialMutation,
+        origin: Option<ConnectionOrigin>,
     ) -> Result<ConnectionProfile, ConnectionServiceError> {
         let has_stored_credential = match &mutation {
             CredentialMutation::Keep => current.has_stored_credential,
@@ -164,7 +174,7 @@ impl ConnectionService {
 
         match self
             .repository
-            .update(id.clone(), draft, has_stored_credential)
+            .update(id.clone(), draft, has_stored_credential, origin)
             .await
         {
             Ok(profile) => Ok(profile),

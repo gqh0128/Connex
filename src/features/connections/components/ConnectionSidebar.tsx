@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Search, Server } from "lucide-react";
+import { FileInput, Plus, RefreshCw, Search, Server } from "lucide-react";
 import {
   forwardRef,
   useEffect,
@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import type { ConnectionProfile, SaveConnectionInput } from "@/types/connections";
 
 import { ConnectionFormDialog } from "./ConnectionFormDialog";
+import { ImportSshConfigDialog } from "./ImportSshConfigDialog";
 import { ConnectionListItem } from "./ConnectionListItem";
 import { useConnections } from "../hooks/useConnections";
 
@@ -54,6 +55,7 @@ type ConnectionSidebarProps = {
 
 export type ConnectionSidebarHandle = {
   openCreateForm: () => void;
+  openSshConfigImport: () => void;
   refreshConnections: () => void;
 };
 
@@ -75,6 +77,8 @@ export const ConnectionSidebar = forwardRef<
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSshConfigImportOpen, setIsSshConfigImportOpen] = useState(false);
+  const [sshConfigImportKey, setSshConfigImportKey] = useState(0);
   const [editingConnection, setEditingConnection] = useState<ConnectionProfile | null>(
     null,
   );
@@ -97,6 +101,26 @@ export const ConnectionSidebar = forwardRef<
         .includes(query),
     );
   }, [connections, searchQuery]);
+  const connectionGroups = useMemo(
+    () =>
+      [
+        {
+          origin: "manual" as const,
+          label: "手动添加",
+          connections: visibleConnections.filter(
+            (connection) => connection.origin === "manual",
+          ),
+        },
+        {
+          origin: "sshConfig" as const,
+          label: "SSH config 导入",
+          connections: visibleConnections.filter(
+            (connection) => connection.origin === "sshConfig",
+          ),
+        },
+      ].filter((group) => group.connections.length > 0),
+    [visibleConnections],
+  );
 
   useEffect(() => {
     if (!isSearchOpen || isCollapsed) {
@@ -122,8 +146,14 @@ export const ConnectionSidebar = forwardRef<
     setIsFormOpen(true);
   };
 
+  const openSshConfigImport = () => {
+    setSshConfigImportKey((current) => current + 1);
+    setIsSshConfigImportOpen(true);
+  };
+
   useImperativeHandle(ref, () => ({
     openCreateForm: openCreateDialog,
+    openSshConfigImport,
     refreshConnections: () => void refreshConnections(),
   }));
 
@@ -184,6 +214,9 @@ export const ConnectionSidebar = forwardRef<
             >
               <Search data-icon="inline-start" />
             </IconAction>
+            <IconAction label="导入 SSH config" onClick={openSshConfigImport}>
+              <FileInput data-icon="inline-start" />
+            </IconAction>
             <IconAction label="新建 SSH 连接" onClick={openCreateDialog}>
               <Plus data-icon="inline-start" />
             </IconAction>
@@ -236,24 +269,39 @@ export const ConnectionSidebar = forwardRef<
                     </IconAction>
                   </div>
                 ) : visibleConnections.length > 0 ? (
-                  <div className="flex flex-col gap-0.5">
-                    {visibleConnections.map((connection) => (
-                      <ConnectionListItem
-                        key={connection.id}
-                        connection={connection}
-                        isActive={connection.id === activeConnectionId}
-                        onConnect={() => onConnect(connection)}
-                        onEdit={() => openEditDialog(connection)}
-                        onCopyAddress={() => {
-                          void writeClipboardText(
-                            `${connection.username}@${connection.host}:${connection.port}`,
-                          ).catch(() => undefined);
-                        }}
-                        onDelete={() => {
-                          setDeleteError(null);
-                          setDeletingConnection(connection);
-                        }}
-                      />
+                  <div className="flex flex-col gap-2">
+                    {connectionGroups.map((group) => (
+                      <section
+                        key={group.origin}
+                        aria-labelledby={`connections-${group.origin}`}
+                      >
+                        <div className="flex h-5 items-center justify-between px-2 text-[10px] font-medium text-muted-foreground">
+                          <h3 id={`connections-${group.origin}`}>{group.label}</h3>
+                          <span className="tabular-nums">
+                            {group.connections.length}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          {group.connections.map((connection) => (
+                            <ConnectionListItem
+                              key={connection.id}
+                              connection={connection}
+                              isActive={connection.id === activeConnectionId}
+                              onConnect={() => onConnect(connection)}
+                              onEdit={() => openEditDialog(connection)}
+                              onCopyAddress={() => {
+                                void writeClipboardText(
+                                  `${connection.username}@${connection.host}:${connection.port}`,
+                                ).catch(() => undefined);
+                              }}
+                              onDelete={() => {
+                                setDeleteError(null);
+                                setDeletingConnection(connection);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                 ) : (
@@ -282,6 +330,10 @@ export const ConnectionSidebar = forwardRef<
                 <Plus />
                 新建连接…
               </ContextMenuItem>
+              <ContextMenuItem onSelect={openSshConfigImport}>
+                <FileInput />
+                导入 SSH config…
+              </ContextMenuItem>
               <ContextMenuItem onSelect={() => void refreshConnections()}>
                 <RefreshCw />
                 刷新连接列表
@@ -301,6 +353,13 @@ export const ConnectionSidebar = forwardRef<
           editingConnection ? () => revealCredential(editingConnection.id) : undefined
         }
         onDelete={editingConnection ? () => remove(editingConnection.id) : undefined}
+      />
+
+      <ImportSshConfigDialog
+        key={sshConfigImportKey}
+        open={isSshConfigImportOpen}
+        onOpenChange={setIsSshConfigImportOpen}
+        onImported={() => void refreshConnections()}
       />
 
       <AlertDialog
